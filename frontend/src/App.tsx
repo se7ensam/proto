@@ -4,10 +4,13 @@ import PlanDraftPanel from './components/PlanDraftPanel'
 import { Message, PlanSection } from './types'
 import { apiService } from './services/api'
 
+import LoginPage from './components/LoginPage'
+
 function App() {
   const [messages, setMessages] = useState<Message[]>([])
   const [planSections, setPlanSections] = useState<PlanSection[]>([])
   const [loading, setLoading] = useState(false)
+  const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem('auth_token'))
 
   // Load initial data
   useEffect(() => {
@@ -28,23 +31,70 @@ function App() {
 
   const handleSendMessage = async (content: string) => {
     setLoading(true)
+
+    let streamingMessageId: string | null = null
+
     try {
-      const response = await apiService.sendMessage(content)
-      // Convert timestamp strings to Date objects
-      const userMessage = {
-        ...response.userMessage,
-        timestamp: new Date(response.userMessage.timestamp),
-      }
-      const aiMessage = {
-        ...response.aiMessage,
-        timestamp: new Date(response.aiMessage.timestamp),
-      }
-      setMessages((prev) => [...prev, userMessage, aiMessage])
+      await apiService.sendMessageStream(
+        content,
+        // onChunk - update streaming message immediately
+        (chunk: string) => {
+          if (streamingMessageId) {
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === streamingMessageId
+                  ? { ...msg, content: msg.content + chunk, isStreaming: true }
+                  : msg
+              )
+            )
+          }
+        },
+        // onUserMessage - add user message
+        (message: Message) => {
+          setMessages((prev) => [...prev, message])
+        },
+        // onAiStart - create placeholder for AI message with streaming flag
+        (messageId: string) => {
+          streamingMessageId = messageId
+          const placeholderMessage: Message = {
+            id: messageId,
+            type: 'ai',
+            content: '',
+            timestamp: new Date(),
+            isStreaming: true,
+          }
+          setMessages((prev) => [...prev, placeholderMessage])
+        },
+        // onComplete - finalize AI message, remove streaming flag
+        (aiMessage: Message) => {
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === streamingMessageId
+                ? { ...aiMessage, isStreaming: false }
+                : msg
+            )
+          )
+          streamingMessageId = null
+          setLoading(false)
+        },
+        // onError
+        (error: string) => {
+          console.error('Failed to send message:', error)
+          alert(error)
+          setLoading(false)
+          // Remove incomplete streaming message if it exists
+          if (streamingMessageId) {
+            setMessages((prev) => prev.filter((msg) => msg.id !== streamingMessageId))
+          }
+        }
+      )
     } catch (error) {
       console.error('Failed to send message:', error)
       alert(error instanceof Error ? error.message : 'Failed to send message')
-    } finally {
       setLoading(false)
+      if (streamingMessageId) {
+        setMessages((prev) => prev.filter((msg) => msg.id !== streamingMessageId))
+      }
     }
   }
 
@@ -105,8 +155,12 @@ function App() {
     }
   }
 
+  if (!isAuthenticated) {
+    return <LoginPage onLoginSuccess={() => setIsAuthenticated(true)} />
+  }
+
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-screen bg-gray-50 relative">
       {loading && (
         <div className="fixed top-4 right-4 bg-blue-500 text-white px-4 py-2 rounded shadow-lg z-50">
           Loading...
@@ -125,6 +179,12 @@ function App() {
           sections={planSections}
           onLockSection={handleLockSection}
         />
+      </div>
+      <div className="absolute top-4 right-4 z-10">
+        <button onClick={() => {
+          apiService.logout();
+          setIsAuthenticated(false);
+        }} className="text-xs text-gray-500 hover:text-gray-700">Logout</button>
       </div>
     </div>
   )

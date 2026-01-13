@@ -1,4 +1,6 @@
 import { Message } from '../types'
+import TypingIndicator from './TypingIndicator'
+import TypewriterText from './TypewriterText'
 
 interface MessageBubbleProps {
   message: Message
@@ -15,6 +17,7 @@ export default function MessageBubble({
   const isAI = message.type === 'ai'
   const isSystem = message.type === 'system'
   const isPlanUpdate = message.type === 'plan_update'
+  const isStreaming = message.isStreaming || false
 
   const getBubbleStyles = () => {
     if (isUser) {
@@ -41,11 +44,20 @@ export default function MessageBubble({
           {isSystem && 'System'}
           {isPlanUpdate && 'Plan Update'}
         </div>
-        <div className="whitespace-pre-wrap">{message.content}</div>
-        <div className="text-xs opacity-70 mt-2">
-          {message.timestamp.toLocaleTimeString()}
+        <div className="whitespace-pre-wrap">
+          {isAI ? (
+            <TypewriterText content={message.content} isStreaming={isStreaming} />
+          ) : (
+            message.content
+          )}
+          {isStreaming && <TypingIndicator />}
         </div>
-        {isAI && (
+        {!isStreaming && (
+          <div className="text-xs opacity-70 mt-2">
+            {message.timestamp.toLocaleTimeString()}
+          </div>
+        )}
+        {isAI && !isStreaming && (
           <div className="flex gap-2 mt-3">
             <button
               onClick={() => onApplyToPlan(message.id)}

@@ -70,6 +70,11 @@ npm run dev
 
 Backend will run on `http://localhost:3001`
 
+**Environment Variables:**
+- `GEMINI_API_KEY` - Your Google Gemini API key (required for AI responses)
+  - Get your API key from [Google AI Studio](https://makersuite.google.com/app/apikey)
+  - Set it as an environment variable: `export GEMINI_API_KEY=your_api_key_here`
+
 ## API Endpoints
 
 ### Chat
@@ -92,26 +97,14 @@ This means:
 - Users must click "Apply to Plan" to add content to the plan
 - Plan updates are tracked separately and shown as `plan_update` messages
 
-## Next Steps
+## LLM Integration
 
-### LLM Integration
-Replace the placeholder in `backend/src/services/llm.service.ts` with your LLM provider:
+The backend is configured to use **Google Gemini API** for generating AI responses.
 
-```typescript
-// Example with OpenAI
-import OpenAI from 'openai'
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
-
-async generateResponse(userMessage: string, context: ConversationContext): Promise<string> {
-  const prompt = this.promptService.buildPromptWithRules(userMessage, context)
-  const completion = await openai.chat.completions.create({
-    model: 'gpt-4',
-    messages: [{ role: 'user', content: prompt }],
-  })
-  return completion.choices[0].message.content || ''
-}
-```
+- The LLM service is located in `backend/src/services/llm.service.ts`
+- Currently using the `gemini-pro` model
+- Set the `GEMINI_API_KEY` environment variable to enable AI responses
+- If the API key is not set, the service will return placeholder responses
 
 ### Database Integration
 Replace in-memory storage in `backend/src/services/context.service.ts` with a database (PostgreSQL, MongoDB, etc.)

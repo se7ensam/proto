@@ -1,4 +1,4 @@
-import { ConversationContext, Message } from '../types'
+import { ConversationContext } from '../types'
 
 export class PromptService {
   /**
@@ -57,7 +57,7 @@ export class PromptService {
   } {
     // Simple extraction - in production, use LLM structured output
     const planUpdateMatch = aiResponse.match(/\[PLAN_UPDATE\](.*?)\[\/PLAN_UPDATE\]/s)
-    
+
     return {
       content: aiResponse,
       suggestedPlanUpdate: planUpdateMatch ? planUpdateMatch[1].trim() : undefined,

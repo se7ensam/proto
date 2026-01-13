@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import { Message } from '../types'
 import MessageBubble from './MessageBubble'
 
@@ -12,6 +13,13 @@ export default function MessageList({
   onApplyToPlan,
   onRegenerate,
 }: MessageListProps) {
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  // Auto-scroll to bottom when messages change (especially during streaming)
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
+
   return (
     <div className="p-4 space-y-4">
       {messages.length === 0 ? (
@@ -19,14 +27,17 @@ export default function MessageList({
           Start a conversation...
         </div>
       ) : (
-        messages.map((message) => (
-          <MessageBubble
-            key={message.id}
-            message={message}
-            onApplyToPlan={onApplyToPlan}
-            onRegenerate={onRegenerate}
-          />
-        ))
+        <>
+          {messages.map((message) => (
+            <MessageBubble
+              key={message.id}
+              message={message}
+              onApplyToPlan={onApplyToPlan}
+              onRegenerate={onRegenerate}
+            />
+          ))}
+          <div ref={messagesEndRef} />
+        </>
       )}
     </div>
   )

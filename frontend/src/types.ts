@@ -5,6 +5,7 @@ export interface Message {
   type: MessageType
   content: string
   timestamp: Date
+  isStreaming?: boolean
 }
 
 export interface PlanSection {
