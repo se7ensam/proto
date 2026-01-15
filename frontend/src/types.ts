@@ -1,4 +1,4 @@
-export type MessageType = 'user' | 'ai' | 'system' | 'plan_update'
+export type MessageType = 'user' | 'ai' | 'assistant' | 'system' | 'plan_update'
 
 export interface Message {
   id: string
@@ -13,4 +13,9 @@ export interface PlanSection {
   content: string
   locked: boolean
   timestamp: Date
+  sourceMessage?: {
+    id: string
+    content: string
+    timestamp: Date
+  }
 }

@@ -1,15 +1,17 @@
 import { useState, useEffect } from 'react'
+import { toast } from 'sonner'
+import { Toaster } from '@/components/ui/sonner'
 import ChatPanel from './components/ChatPanel'
 import PlanDraftPanel from './components/PlanDraftPanel'
 import { Message, PlanSection } from './types'
 import { apiService } from './services/api'
+import { AppMenubar } from './components/AppMenubar'
 
 import LoginPage from './components/LoginPage'
 
 function App() {
   const [messages, setMessages] = useState<Message[]>([])
   const [planSections, setPlanSections] = useState<PlanSection[]>([])
-  const [loading, setLoading] = useState(false)
   const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem('auth_token'))
 
   // Load initial data
@@ -30,16 +32,28 @@ function App() {
   }, [])
 
   const handleSendMessage = async (content: string) => {
-    setLoading(true)
-
     let streamingMessageId: string | null = null
+    let aiBuffer = ''
+    let aiMessageVisible = false
+    const toastId = toast.loading('Sending message...')
+
+    // Optimistic UI: Add user message immediately
+    const tempId = `temp-${Date.now()}`
+    const tempUserMessage: Message = {
+      id: tempId,
+      type: 'user',
+      content,
+      timestamp: new Date(),
+    }
+    setMessages((prev) => [...prev, tempUserMessage])
 
     try {
       await apiService.sendMessageStream(
         content,
         // onChunk - update streaming message immediately
         (chunk: string) => {
-          if (streamingMessageId) {
+          aiBuffer += chunk
+          if (aiMessageVisible && streamingMessageId) {
             setMessages((prev) =>
               prev.map((msg) =>
                 msg.id === streamingMessageId
@@ -49,49 +63,69 @@ function App() {
             )
           }
         },
-        // onUserMessage - add user message
+        // onUserMessage - replace optimistic message with real confirmed message
         (message: Message) => {
-          setMessages((prev) => [...prev, message])
+          setMessages((prev) => 
+            prev.map((msg) => 
+              msg.id === tempId ? message : msg
+            )
+          )
+          // Removed toast.loading here
         },
-        // onAiStart - create placeholder for AI message with streaming flag
+        // onAiStart - create placeholder for AI message with delay
         (messageId: string) => {
           streamingMessageId = messageId
-          const placeholderMessage: Message = {
-            id: messageId,
-            type: 'ai',
-            content: '',
-            timestamp: new Date(),
-            isStreaming: true,
-          }
-          setMessages((prev) => [...prev, placeholderMessage])
+          
+          // Delay showing AI message for 600ms to simulate thinking/animation delay
+          setTimeout(() => {
+            if (!aiMessageVisible) { // Check if not already shown (e.g. by onComplete)
+              aiMessageVisible = true
+              const placeholderMessage: Message = {
+                id: messageId,
+                type: 'ai',
+                content: aiBuffer, // Use buffered content
+                timestamp: new Date(),
+                isStreaming: true,
+              }
+              setMessages((prev) => [...prev, placeholderMessage])
+            }
+          }, 600)
         },
         // onComplete - finalize AI message, remove streaming flag
         (aiMessage: Message) => {
-          setMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === streamingMessageId
-                ? { ...aiMessage, isStreaming: false }
-                : msg
+          // Ensure message is shown even if it completed very fast
+          if (!aiMessageVisible) {
+            aiMessageVisible = true
+            setMessages((prev) => [...prev, { ...aiMessage, isStreaming: false }])
+          } else {
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === streamingMessageId
+                  ? { ...aiMessage, isStreaming: false }
+                  : msg
+              )
             )
-          )
+          }
           streamingMessageId = null
-          setLoading(false)
+          toast.success('Message received', { id: toastId })
         },
         // onError
         (error: string) => {
           console.error('Failed to send message:', error)
-          alert(error)
-          setLoading(false)
+          toast.error(error, { id: toastId })
+          aiMessageVisible = true // Prevent delayed show from firing
+          
           // Remove incomplete streaming message if it exists
           if (streamingMessageId) {
             setMessages((prev) => prev.filter((msg) => msg.id !== streamingMessageId))
           }
+          // Also remove optimistic message or mark as error (removing for now)
+          setMessages((prev) => prev.filter((msg) => msg.id !== tempId))
         }
       )
     } catch (error) {
       console.error('Failed to send message:', error)
-      alert(error instanceof Error ? error.message : 'Failed to send message')
-      setLoading(false)
+      toast.error(error instanceof Error ? error.message : 'Failed to send message', { id: toastId })
       if (streamingMessageId) {
         setMessages((prev) => prev.filter((msg) => msg.id !== streamingMessageId))
       }
@@ -99,11 +133,22 @@ function App() {
   }
 
   const handleApplyToPlan = async (messageId: string) => {
+    const toastId = toast.loading('Applying to plan...')
+
+    // Find the source message for the quoted reference
+    const sourceMessage = messages.find(m => m.id === messageId)
+
     try {
       const response = await apiService.applyToPlan(messageId)
       const planSection = {
         ...response.planSection,
         timestamp: new Date(response.planSection.timestamp),
+        // Add source message reference for WhatsApp-style quoting
+        sourceMessage: sourceMessage ? {
+          id: sourceMessage.id,
+          content: sourceMessage.content,
+          timestamp: sourceMessage.timestamp,
+        } : undefined,
       }
       const planUpdateMessage = {
         ...response.planUpdateMessage,
@@ -111,14 +156,16 @@ function App() {
       }
       setPlanSections((prev) => [...prev, planSection])
       setMessages((prev) => [...prev, planUpdateMessage])
+      toast.success('Added to plan', { id: toastId })
     } catch (error) {
       console.error('Failed to apply to plan:', error)
-      alert(error instanceof Error ? error.message : 'Failed to apply to plan')
+      toast.error(error instanceof Error ? error.message : 'Failed to apply to plan', { id: toastId })
     }
   }
 
   const handleRegenerate = async (messageId: string) => {
-    setLoading(true)
+    const toastId = toast.loading('Regenerating response...')
+
     try {
       const response = await apiService.regenerateMessage(messageId)
       const updatedMessage = {
@@ -128,17 +175,18 @@ function App() {
       setMessages((prev) =>
         prev.map((msg) => (msg.id === messageId ? updatedMessage : msg))
       )
+      toast.success('Response regenerated', { id: toastId })
     } catch (error) {
       console.error('Failed to regenerate message:', error)
-      alert(error instanceof Error ? error.message : 'Failed to regenerate message')
-    } finally {
-      setLoading(false)
+      toast.error(error instanceof Error ? error.message : 'Failed to regenerate', { id: toastId })
     }
   }
 
   const handleLockSection = async (sectionId: string) => {
     const section = planSections.find((s) => s.id === sectionId)
     if (!section) return
+
+    const toastId = toast.loading(section.locked ? 'Unlocking section...' : 'Locking section...')
 
     try {
       const response = await apiService.lockSection(sectionId, !section.locked)
@@ -149,10 +197,17 @@ function App() {
       setPlanSections((prev) =>
         prev.map((s) => (s.id === sectionId ? updatedSection : s))
       )
+      toast.success(updatedSection.locked ? 'Section locked' : 'Section unlocked', { id: toastId })
     } catch (error) {
       console.error('Failed to lock section:', error)
-      alert(error instanceof Error ? error.message : 'Failed to lock section')
+      toast.error(error instanceof Error ? error.message : 'Failed to update section', { id: toastId })
     }
+  }
+
+  const handleLogout = () => {
+    apiService.logout()
+    setIsAuthenticated(false)
+    toast.success('Logged out successfully')
   }
 
   if (!isAuthenticated) {
@@ -160,31 +215,32 @@ function App() {
   }
 
   return (
-    <div className="flex h-screen bg-gray-50 relative">
-      {loading && (
-        <div className="fixed top-4 right-4 bg-blue-500 text-white px-4 py-2 rounded shadow-lg z-50">
-          Loading...
+    <div className="flex flex-col h-screen bg-background">
+      {/* Sonner Toaster */}
+      <Toaster richColors position="top-right" />
+      
+      {/* App Menubar */}
+      <AppMenubar onLogout={handleLogout} />
+      
+      {/* Main Content */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Chat Panel */}
+        <div className="w-1/2 border-r border-border">
+          <ChatPanel
+            messages={messages}
+            onSendMessage={handleSendMessage}
+            onApplyToPlan={handleApplyToPlan}
+            onRegenerate={handleRegenerate}
+          />
         </div>
-      )}
-      <div className="w-1/2 border-r border-gray-200">
-        <ChatPanel
-          messages={messages}
-          onSendMessage={handleSendMessage}
-          onApplyToPlan={handleApplyToPlan}
-          onRegenerate={handleRegenerate}
-        />
-      </div>
-      <div className="w-1/2">
-        <PlanDraftPanel
-          sections={planSections}
-          onLockSection={handleLockSection}
-        />
-      </div>
-      <div className="absolute top-4 right-4 z-10">
-        <button onClick={() => {
-          apiService.logout();
-          setIsAuthenticated(false);
-        }} className="text-xs text-gray-500 hover:text-gray-700">Logout</button>
+        
+        {/* Plan Panel */}
+        <div className="w-1/2">
+          <PlanDraftPanel
+            sections={planSections}
+            onLockSection={handleLockSection}
+          />
+        </div>
       </div>
     </div>
   )

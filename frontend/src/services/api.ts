@@ -216,10 +216,17 @@ class ApiService {
 
     const data = await response.json()
     return {
-      messages: data.messages.map((msg: any) => ({
-        ...msg,
-        timestamp: new Date(msg.timestamp),
-      })),
+      messages: data.messages.map((msg: any) => {
+        // Normalize type/role
+        let type = msg.type || msg.role
+        if (type === 'assistant') type = 'ai'
+        
+        return {
+          ...msg,
+          type,
+          timestamp: new Date(msg.timestamp),
+        }
+      }),
     }
   }
 
