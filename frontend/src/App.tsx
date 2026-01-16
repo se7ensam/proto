@@ -93,19 +93,25 @@ function App() {
         },
         // onComplete - finalize AI message, remove streaming flag
         (aiMessage: Message) => {
-          // Ensure message is shown even if it completed very fast
-          if (!aiMessageVisible) {
-            aiMessageVisible = true
-            setMessages((prev) => [...prev, { ...aiMessage, isStreaming: false }])
-          } else {
-            setMessages((prev) =>
-              prev.map((msg) =>
-                msg.id === streamingMessageId
-                  ? { ...aiMessage, isStreaming: false }
+          const completedMessage = { ...aiMessage, isStreaming: false }
+          
+          setMessages((prev) => {
+            // Check if we have the placeholder or streaming message
+            const exists = prev.some(msg => msg.id === aiMessage.id || msg.id === streamingMessageId)
+            
+            if (exists) {
+              return prev.map((msg) =>
+                (msg.id === streamingMessageId || msg.id === aiMessage.id)
+                  ? completedMessage
                   : msg
               )
-            )
-          }
+            } else {
+              // If it doesn't exist (e.g. completed very fast before placeholder), add it
+              return [...prev, completedMessage]
+            }
+          })
+          
+          aiMessageVisible = true
           streamingMessageId = null
           toast.success('Message received', { id: toastId })
         },
