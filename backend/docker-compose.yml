@@ -33,6 +33,23 @@ services:
     networks:
       - app-network
 
+  backend-tests:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: npm test
+    environment:
+      - NODE_ENV=test
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgres://postgres:postgres@postgres:5432/ai_chat
+    depends_on:
+      - redis
+      - postgres
+    networks:
+      - app-network
+    profiles:
+      - test
+
   postgres:
     image: postgres:15-alpine
     restart: always

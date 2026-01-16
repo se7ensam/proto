@@ -13,9 +13,44 @@ redis.on('connect', () => {
 })
 
 export class ContextService {
+  constructor(private client: Redis) {}
+
+  private getKey(conversationId: string): string {
+    return `conversation:${conversationId}`
+  }
+
+  private async updateConversation(
+    conversationId: string,
+    updater: (context: ConversationContext) => ConversationContext
+  ): Promise<ConversationContext> {
+    const key = this.getKey(conversationId)
+    const maxRetries = 3
+
+    for (let attempt = 0; attempt < maxRetries; attempt += 1) {
+      await this.client.watch(key)
+      const data = await this.client.get(key)
+      const context: ConversationContext = data
+        ? JSON.parse(data)
+        : { messages: [], planSections: [], planningRules: [] }
+
+      const updated = updater(context)
+      const multi = this.client.multi()
+      multi.set(key, JSON.stringify(updated))
+      const result = await multi.exec()
+
+      if (result) {
+        return updated
+      }
+
+      await this.client.unwatch()
+    }
+
+    throw new Error('Failed to update conversation due to concurrent updates')
+  }
+
   private async getOrCreateConversation(conversationId: string): Promise<ConversationContext> {
-    const key = `conversation:${conversationId}`
-    const data = await redis.get(key)
+    const key = this.getKey(conversationId)
+    const data = await this.client.get(key)
 
     if (data) {
       return JSON.parse(data)
@@ -28,35 +63,31 @@ export class ContextService {
     }
 
     // Store initial empty context
-    await redis.set(key, JSON.stringify(newContext))
+    await this.client.set(key, JSON.stringify(newContext))
     return newContext
   }
 
-  private async saveConversation(conversationId: string, context: ConversationContext): Promise<void> {
-    const key = `conversation:${conversationId}`
-    await redis.set(key, JSON.stringify(context))
-  }
-
   async getConversation(conversationId: string): Promise<ConversationContext | null> {
-    const key = `conversation:${conversationId}`
-    const data = await redis.get(key)
+    const key = this.getKey(conversationId)
+    const data = await this.client.get(key)
     return data ? JSON.parse(data) : null
   }
 
   async addMessage(conversationId: string, message: Message): Promise<void> {
-    const context = await this.getOrCreateConversation(conversationId)
-    context.messages.push(message)
-    await this.saveConversation(conversationId, context)
+    await this.updateConversation(conversationId, (context) => {
+      context.messages.push(message)
+      return context
+    })
   }
 
   async addMessageAndGetContext(
     conversationId: string,
     message: Message
   ): Promise<ConversationContext> {
-    const context = await this.getOrCreateConversation(conversationId)
-    context.messages.push(message)
-    await this.saveConversation(conversationId, context)
-    return context
+    return this.updateConversation(conversationId, (context) => {
+      context.messages.push(message)
+      return context
+    })
   }
 
   async getMessages(conversationId: string): Promise<Message[]> {
@@ -65,9 +96,10 @@ export class ContextService {
   }
 
   async addPlanSection(conversationId: string, section: PlanSection): Promise<void> {
-    const context = await this.getOrCreateConversation(conversationId)
-    context.planSections.push(section)
-    await this.saveConversation(conversationId, context)
+    await this.updateConversation(conversationId, (context) => {
+      context.planSections.push(section)
+      return context
+    })
   }
 
   async getPlanSections(conversationId: string): Promise<PlanSection[]> {
@@ -80,21 +112,25 @@ export class ContextService {
     sectionId: string,
     updates: Partial<PlanSection>
   ): Promise<boolean> {
-    const context = await this.getOrCreateConversation(conversationId)
-    const section = context.planSections.find((s) => s.id === sectionId)
+    let updated = false
 
-    if (section) {
-      Object.assign(section, updates)
-      await this.saveConversation(conversationId, context)
-      return true
-    }
-    return false
+    await this.updateConversation(conversationId, (context) => {
+      const section = context.planSections.find((s) => s.id === sectionId)
+      if (section) {
+        Object.assign(section, updates)
+        updated = true
+      }
+      return context
+    })
+
+    return updated
   }
 
   async setPlanningRules(conversationId: string, rules: string[]): Promise<void> {
-    const context = await this.getOrCreateConversation(conversationId)
-    context.planningRules = rules
-    await this.saveConversation(conversationId, context)
+    await this.updateConversation(conversationId, (context) => {
+      context.planningRules = rules
+      return context
+    })
   }
 
   async getPlanningRules(conversationId: string): Promise<string[]> {
@@ -103,16 +139,19 @@ export class ContextService {
   }
 
   async updateMessage(conversationId: string, messageId: string, updates: Partial<Message>): Promise<Message | null> {
-    const context = await this.getOrCreateConversation(conversationId)
-    const message = context.messages.find((m) => m.id === messageId)
+    let updatedMessage: Message | null = null
 
-    if (message) {
-      Object.assign(message, updates)
-      await this.saveConversation(conversationId, context)
-      return message
-    }
-    return null
+    await this.updateConversation(conversationId, (context) => {
+      const message = context.messages.find((m) => m.id === messageId)
+      if (message) {
+        Object.assign(message, updates)
+        updatedMessage = message
+      }
+      return context
+    })
+
+    return updatedMessage
   }
 }
 
-export const contextService = new ContextService()
+export const contextService = new ContextService(redis)
