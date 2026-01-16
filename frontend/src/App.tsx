@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { toast } from 'sonner'
 import { Toaster } from '@/components/ui/sonner'
 import ChatPanel from './components/ChatPanel'
@@ -13,6 +13,8 @@ function App() {
   const [messages, setMessages] = useState<Message[]>([])
   const [planSections, setPlanSections] = useState<PlanSection[]>([])
   const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem('auth_token'))
+  const [isGenerating, setIsGenerating] = useState(false)
+  const abortControllerRef = (useRef<AbortController | null>(null)) as React.MutableRefObject<AbortController | null>
 
   // Load initial data
   useEffect(() => {
@@ -47,6 +49,10 @@ function App() {
     }
     setMessages((prev) => [...prev, tempUserMessage])
 
+    setIsGenerating(true)
+    const abortController = new AbortController()
+    abortControllerRef.current = abortController
+
     try {
       await apiService.sendMessageStream(
         content,
@@ -70,7 +76,6 @@ function App() {
               msg.id === tempId ? message : msg
             )
           )
-          // Removed toast.loading here
         },
         // onAiStart - create placeholder for AI message with delay
         (messageId: string) => {
@@ -93,6 +98,7 @@ function App() {
         },
         // onComplete - finalize AI message, remove streaming flag
         (aiMessage: Message) => {
+          setIsGenerating(false)
           const completedMessage = { ...aiMessage, isStreaming: false }
           
           setMessages((prev) => {
@@ -117,6 +123,11 @@ function App() {
         },
         // onError
         (error: string) => {
+          setIsGenerating(false)
+          if (error === 'AbortError' || error.includes('aborted')) {
+             toast.info('Generation stopped', { id: toastId })
+             return
+          }
           console.error('Failed to send message:', error)
           toast.error(error, { id: toastId })
           aiMessageVisible = true // Prevent delayed show from firing
@@ -127,9 +138,23 @@ function App() {
           }
           // Also remove optimistic message or mark as error (removing for now)
           setMessages((prev) => prev.filter((msg) => msg.id !== tempId))
-        }
+        },
+        abortController.signal
       )
-    } catch (error) {
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+         setIsGenerating(false)
+         toast.info('Generation stopped', { id: toastId })
+         // Leave whatever partial message exists? Or remove it?
+         // Usually better to leave partial message but mark not streaming
+         if (streamingMessageId) {
+            setMessages(prev => prev.map(msg => 
+                msg.id === streamingMessageId ? { ...msg, isStreaming: false } : msg
+            ))
+         }
+         return
+      }
+      setIsGenerating(false)
       console.error('Failed to send message:', error)
       toast.error(error instanceof Error ? error.message : 'Failed to send message', { id: toastId })
       if (streamingMessageId) {
@@ -210,6 +235,14 @@ function App() {
     }
   }
 
+  const handleStopGeneration = () => {
+    if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+        abortControllerRef.current = null
+        setIsGenerating(false)
+    }
+  }
+
   const handleLogout = () => {
     apiService.logout()
     setIsAuthenticated(false)
@@ -237,6 +270,8 @@ function App() {
             onSendMessage={handleSendMessage}
             onApplyToPlan={handleApplyToPlan}
             onRegenerate={handleRegenerate}
+            isGenerating={isGenerating}
+            onStop={handleStopGeneration}
           />
         </div>
         
