@@ -9,6 +9,8 @@ interface ChatPanelProps {
   onSendMessage: (content: string) => void
   onApplyToPlan: (messageId: string) => void
   onRegenerate: (messageId: string) => void
+  isGenerating?: boolean
+  onStop?: () => void
 }
 
 export default function ChatPanel({
@@ -16,6 +18,8 @@ export default function ChatPanel({
   onSendMessage,
   onApplyToPlan,
   onRegenerate,
+  isGenerating,
+  onStop,
 }: ChatPanelProps) {
   return (
     <Card className="flex flex-col h-full rounded-none border-0 border-r">
@@ -26,14 +30,18 @@ export default function ChatPanel({
         </CardTitle>
       </CardHeader>
       <CardContent className="flex-1 overflow-hidden p-0 flex flex-col">
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-hidden">
           <MessageList
             messages={messages}
             onApplyToPlan={onApplyToPlan}
             onRegenerate={onRegenerate}
           />
         </div>
-        <MessageInput onSendMessage={onSendMessage} />
+        <MessageInput 
+            onSendMessage={onSendMessage} 
+            isGenerating={isGenerating}
+            onStop={onStop}
+        />
       </CardContent>
     </Card>
   )
