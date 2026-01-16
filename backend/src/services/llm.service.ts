@@ -30,14 +30,10 @@ export class LLMService {
     // Build prompt with planning rules and context
     const prompt = this.promptService.buildPromptWithRules(userMessage, context)
 
-    // Log the query
-    console.log('='.repeat(80))
-    console.log('[LLM Service] Generating response')
-    console.log('[LLM Service] Model:', this.modelName)
-    console.log('[LLM Service] User Message:', userMessage)
-    console.log('[LLM Service] Prompt Length:', prompt.length, 'characters')
-    console.log('[LLM Service] Full Prompt:', '\n' + prompt)
-    console.log('-'.repeat(80))
+    // Log minimal metadata (avoid large prompt logs)
+    console.log(
+      `[LLM Service] Generating response - Model: ${this.modelName} - Prompt length: ${prompt.length}`
+    )
 
     // If Gemini is not configured, return placeholder
     if (!this.genAI) {
@@ -57,20 +53,14 @@ export class LLMService {
       const duration = Date.now() - startTime
       const responseText = response.text || 'No response generated'
       
-      // Log the response
-      console.log('[LLM Service] API call successful')
-      console.log('[LLM Service] Response Time:', duration, 'ms')
-      console.log('[LLM Service] Response Length:', responseText.length, 'characters')
-      console.log('[LLM Service] Response:', responseText)
-      console.log('='.repeat(80))
+      console.log(
+        `[LLM Service] API call successful - ${duration}ms - ${responseText.length} chars`
+      )
 
       return responseText
     } catch (error) {
       const duration = Date.now() - startTime
-      console.error('[LLM Service] Error calling Gemini API')
-      console.error('[LLM Service] Error Time:', duration, 'ms')
-      console.error('[LLM Service] Error Details:', error)
-      console.log('='.repeat(80))
+      console.error(`[LLM Service] Error calling Gemini API after ${duration}ms:`, error)
       throw new Error(
         error instanceof Error
           ? `Failed to generate response: ${error.message}`

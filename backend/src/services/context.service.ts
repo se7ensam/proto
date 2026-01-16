@@ -49,6 +49,16 @@ export class ContextService {
     await this.saveConversation(conversationId, context)
   }
 
+  async addMessageAndGetContext(
+    conversationId: string,
+    message: Message
+  ): Promise<ConversationContext> {
+    const context = await this.getOrCreateConversation(conversationId)
+    context.messages.push(message)
+    await this.saveConversation(conversationId, context)
+    return context
+  }
+
   async getMessages(conversationId: string): Promise<Message[]> {
     const context = await this.getOrCreateConversation(conversationId)
     return context.messages

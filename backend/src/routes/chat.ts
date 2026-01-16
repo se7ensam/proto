@@ -23,12 +23,11 @@ chatRouter.post('/message/stream', authenticateToken, async (req: AuthRequest, r
       timestamp: new Date(),
     }
 
-    // Add to context
-    await contextService.addMessage(scopedConversationId, userMessage)
-
-    // Get conversation context
-    const context = await contextService.getConversation(scopedConversationId)
-    if (!context) throw new Error('Failed to load context')
+    // Add to context and get conversation in one round-trip
+    const context = await contextService.addMessageAndGetContext(
+      scopedConversationId,
+      userMessage
+    )
 
     // Set up Server-Sent Events
     res.setHeader('Content-Type', 'text/event-stream')
@@ -111,12 +110,11 @@ chatRouter.post('/message', authenticateToken, async (req: AuthRequest, res: Res
       timestamp: new Date(),
     }
 
-    // Add to context
-    await contextService.addMessage(scopedConversationId, userMessage)
-
-    // Get conversation context
-    const context = await contextService.getConversation(scopedConversationId)
-    if (!context) throw new Error('Failed to load context')
+    // Add to context and get conversation in one round-trip
+    const context = await contextService.addMessageAndGetContext(
+      scopedConversationId,
+      userMessage
+    )
 
     // Generate AI response
     const aiContent = await llmService.generateResponse(
