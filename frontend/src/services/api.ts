@@ -114,7 +114,8 @@ class ApiService {
     onUserMessage: (message: Message) => void,
     onAiStart: (messageId: string) => void,
     onComplete: (message: Message) => void,
-    onError: (error: string) => void
+    onError: (error: string) => void,
+    signal?: AbortSignal
   ): Promise<void> {
     const response = await fetch(`${API_BASE}/chat/message/stream`, {
       method: 'POST',
@@ -123,6 +124,7 @@ class ApiService {
         content,
         conversationId: this.conversationId,
       }),
+      signal,
     })
 
     if (!response.ok) {

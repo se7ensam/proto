@@ -1,3 +1,4 @@
+import { Button } from "@/components/ui/button"
 import {
   Menubar,
   MenubarContent,
@@ -73,6 +74,15 @@ export function AppMenubar({ onLogout }: AppMenubarProps) {
         </Menubar>
       </div>
       <div className="flex items-center gap-2">
+        <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={onLogout}
+            className="hidden md:flex gap-2 text-muted-foreground hover:text-foreground"
+        >
+            <LogOut className="h-4 w-4" />
+            Logout
+        </Button>
         <ThemeToggle />
       </div>
     </div>
