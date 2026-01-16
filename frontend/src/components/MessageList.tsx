@@ -4,7 +4,6 @@ import MessageBubble from './MessageBubble'
 import { MessageSquareDashed, ArrowDown } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
 
 interface MessageListProps {
   messages: Message[]
