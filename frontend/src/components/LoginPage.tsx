@@ -40,14 +40,14 @@ export default function LoginPage({ onLoginSuccess }: LoginPageProps) {
     }
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
-            <div className="absolute inset-0 bg-grid-pattern opacity-5"></div>
-            <Card className="w-[400px] shadow-xl border-0 backdrop-blur-sm bg-white/80">
+        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
+            <div className="absolute inset-0 bg-grid-pattern opacity-5 dark:opacity-[0.02]"></div>
+            <Card className="w-[400px] shadow-xl border-0 backdrop-blur-sm bg-white/80 dark:bg-card/80 dark:border dark:border-border">
                 <CardHeader className="space-y-1 pb-4">
-                    <CardTitle className="text-2xl font-bold text-center bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+                    <CardTitle className="text-2xl font-bold text-center bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-blue-400 dark:to-indigo-400 bg-clip-text text-transparent">
                         {isLogin ? 'Welcome Back' : 'Create Account'}
                     </CardTitle>
-                    <CardDescription className="text-center">
+                    <CardDescription className="text-center text-muted-foreground">
                         {isLogin ? 'Sign in to continue to AI Chat' : 'Sign up to get started with AI Chat'}
                     </CardDescription>
                 </CardHeader>
@@ -68,7 +68,7 @@ export default function LoginPage({ onLoginSuccess }: LoginPageProps) {
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
                                 placeholder="Enter your email"
-                                className="h-11"
+                                className="h-11 bg-background"
                             />
                         </div>
 
@@ -81,14 +81,14 @@ export default function LoginPage({ onLoginSuccess }: LoginPageProps) {
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
                                 placeholder="Enter your password"
-                                className="h-11"
+                                className="h-11 bg-background"
                             />
                         </div>
 
                         <Button
                             type="submit"
                             disabled={loading}
-                            className="w-full h-11 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 transition-all duration-200"
+                            className="w-full h-11 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white transition-all duration-200"
                         >
                             {loading ? 'Processing...' : isLogin ? 'Sign In' : 'Sign Up'}
                         </Button>
@@ -99,7 +99,7 @@ export default function LoginPage({ onLoginSuccess }: LoginPageProps) {
                             {isLogin ? "Don't have an account? " : "Already have an account? "}
                             <button
                                 onClick={() => setIsLogin(!isLogin)}
-                                className="font-medium text-primary hover:underline"
+                                className="font-medium text-primary hover:underline focus:outline-none"
                             >
                                 {isLogin ? 'Sign up' : 'Log in'}
                             </button>
