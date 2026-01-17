@@ -58,8 +58,8 @@ class ApiService {
       body: JSON.stringify({ email, password }),
     })
     if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.error || 'Login failed')
+      const errorData = await response.json()
+      throw new Error(errorData.error?.message || 'Login failed')
     }
     return response.json()
   }
@@ -71,8 +71,8 @@ class ApiService {
       body: JSON.stringify({ email, password }),
     })
     if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.error || 'Signup failed')
+      const errorData = await response.json()
+      throw new Error(errorData.error?.message || 'Signup failed')
     }
     return response.json()
   }
@@ -84,8 +84,8 @@ class ApiService {
       body: JSON.stringify({ token }),
     })
     if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.error || 'Google login failed')
+      const errorData = await response.json()
+      throw new Error(errorData.error?.message || 'Google login failed')
     }
     return response.json()
   }
@@ -101,8 +101,8 @@ class ApiService {
     })
 
     if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.error || 'Failed to send message')
+      const errorData = await response.json()
+      throw new Error(errorData.error?.message || 'Failed to send message')
     }
 
     return response.json()
@@ -128,8 +128,12 @@ class ApiService {
     })
 
     if (!response.ok) {
-      const error = await response.json()
-      onError(error.error || 'Failed to send message')
+      if (response.status === 401) {
+        onError('Unauthorized: Please login again')
+        return
+      }
+      const errorData = await response.json()
+      onError(errorData.error?.message || 'Failed to send message')
       return
     }
 
@@ -197,8 +201,8 @@ class ApiService {
     })
 
     if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.error || 'Failed to regenerate message')
+      const errorData = await response.json()
+      throw new Error(errorData.error?.message || 'Failed to regenerate message')
     }
 
     return response.json()
@@ -213,6 +217,9 @@ class ApiService {
     )
 
     if (!response.ok) {
+      if (response.status === 401) {
+        throw new Error('Unauthorized: Please login again')
+      }
       throw new Error('Failed to fetch conversation history')
     }
 
@@ -243,8 +250,8 @@ class ApiService {
     })
 
     if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.error || 'Failed to apply to plan')
+      const errorData = await response.json()
+      throw new Error(errorData.error?.message || 'Failed to apply to plan')
     }
 
     return response.json()
@@ -259,6 +266,9 @@ class ApiService {
     )
 
     if (!response.ok) {
+      if (response.status === 401) {
+        throw new Error('Unauthorized: Please login again')
+      }
       throw new Error('Failed to fetch plan sections')
     }
 
@@ -284,8 +294,8 @@ class ApiService {
     })
 
     if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.error || 'Failed to lock section')
+      const errorData = await response.json()
+      throw new Error(errorData.error?.message || 'Failed to lock section')
     }
 
     return response.json()

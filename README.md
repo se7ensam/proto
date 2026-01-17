@@ -20,12 +20,26 @@ proto/
 │   │   └── types.ts       # TypeScript types
 │   └── package.json
 │
-└── backend/           # Node.js + TypeScript + Express
+└── backend/           # Node.js + TypeScript + Fastify
     ├── src/
-    │   ├── routes/        # API routes
-    │   ├── services/       # Business logic
-    │   ├── schemas/       # Zod validation schemas
-    │   └── types.ts       # TypeScript types
+    │   ├── domain/        # Business logic (framework-agnostic)
+    │   │   ├── services/  # Domain services
+    │   │   ├── repositories.ts  # Repository interfaces
+    │   │   ├── errors.ts  # Typed errors
+    │   │   └── types.ts   # Domain types
+    │   ├── infrastructure/  # Framework & external dependencies
+    │   │   ├── repositories/  # PostgreSQL implementations
+    │   │   ├── services/  # LLM, Auth adapters
+    │   │   ├── fastify/   # Fastify plugins & routes
+    │   │   ├── logger.ts  # Structured logging
+    │   │   └── metrics.ts # Prometheus metrics
+    │   ├── db/           # Database schema
+    │   ├── app.ts        # Fastify app setup
+    │   ├── index.ts      # Entry point
+    │   └── env.ts        # Environment loader
+    ├── tests/            # Test files
+    │   └── helpers.ts    # Test utilities
+    ├── docs/             # Documentation
     └── package.json
 ```
 
@@ -38,10 +52,14 @@ proto/
 - ✅ Real-time plan updates when AI suggestions are applied
 
 ### Backend
-- ✅ Conversation context management
-- ✅ Planning rules injection into prompts
-- ✅ Structured output enforcement (via Zod schemas)
-- ✅ Separate chat vs plan mutations
+- ✅ Domain-driven architecture (framework-agnostic business logic)
+- ✅ PostgreSQL persistence for messages and plans
+- ✅ Typed error handling (domain vs infrastructure errors)
+- ✅ Structured logging with Pino
+- ✅ Prometheus metrics for observability
+- ✅ Rate limiting and input sanitization
+- ✅ Comprehensive unit tests
+- ✅ Repository pattern for data access
 - ✅ TypeScript strict mode
 
 ## Getting Started
@@ -121,10 +139,15 @@ Implement structured output from your LLM to extract plan suggestions automatica
 - TypeScript
 
 **Backend:**
-- Node.js
-- Express
+- Node.js 18+
+- Fastify 5.x
 - TypeScript (strict mode)
+- PostgreSQL 15 + Drizzle ORM
+- Redis (rate limiting & caching)
+- Pino (structured logging)
+- Prometheus (metrics)
 - Zod (schema validation)
+- Vitest (testing)
 
 ## License
 
