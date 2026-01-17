@@ -1,29 +1,35 @@
 // Import env loader FIRST - this must be before any other imports
 import './env'
 
-import express from 'express'
-import cors from 'cors'
-import { chatRouter } from './routes/chat'
-import { planRouter } from './routes/plan'
-import { authRouter } from './routes/auth'
+import { buildApp } from './app'
+import { logger } from './infrastructure/logger'
 
-const app = express()
-const PORT = process.env.PORT || 3001
+const PORT = parseInt(process.env.PORT || '3001', 10)
+const HOST = process.env.HOST || '0.0.0.0'
 
-// Middleware
-app.use(cors())
-app.use(express.json())
+async function start() {
+  try {
+    const app = await buildApp()
 
-// Routes
-app.use('/api/chat', chatRouter)
-app.use('/api/plan', planRouter)
-app.use('/api/auth', authRouter)
+    await app.listen({ port: PORT, host: HOST })
 
-// Health check
-app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() })
-})
+    logger.info(`Server running on http://${HOST}:${PORT}`)
+    logger.info(`Health check: http://${HOST}:${PORT}/health`)
+    logger.info(`Metrics: http://${HOST}:${PORT}/metrics`)
 
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`)
-})
+    // Graceful shutdown
+    const signals = ['SIGINT', 'SIGTERM']
+    signals.forEach((signal) => {
+      process.on(signal, async () => {
+        logger.info(`Received ${signal}, closing server gracefully`)
+        await app.close()
+        process.exit(0)
+      })
+    })
+  } catch (error) {
+    logger.error(error, 'Failed to start server')
+    process.exit(1)
+  }
+}
+
+start()
