@@ -17,13 +17,27 @@ async function start() {
     logger.info(`Health check: http://${HOST}:${PORT}/health`)
     logger.info(`Metrics: http://${HOST}:${PORT}/metrics`)
 
-    // Graceful shutdown
-    const signals = ['SIGINT', 'SIGTERM']
+    // Graceful shutdown with force exit timeout
+    const signals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM']
     signals.forEach((signal) => {
       process.on(signal, async () => {
         logger.info(`Received ${signal}, closing server gracefully`)
-        await app.close()
-        process.exit(0)
+
+        // Force exit after 5 seconds if graceful shutdown hangs
+        const forceExitTimeout = setTimeout(() => {
+          logger.warn('Graceful shutdown timed out, forcing exit')
+          process.exit(1)
+        }, 5000)
+        forceExitTimeout.unref() // Don't keep process alive just for this timer
+
+        try {
+          await app.close()
+          clearTimeout(forceExitTimeout)
+          process.exit(0)
+        } catch (err) {
+          logger.error(err, 'Error during graceful shutdown')
+          process.exit(1)
+        }
       })
     })
   } catch (error) {

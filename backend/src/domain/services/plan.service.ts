@@ -22,15 +22,6 @@ export class PlanService {
     conversationId: string,
     messageId: string
   ): Promise<{ planSection: PlanSection; planUpdateMessage: Message }> {
-    // Verify conversation belongs to user
-    const conversation = await this.conversationRepo.findById(conversationId)
-    if (!conversation) {
-      throw new NotFoundError('Conversation', conversationId)
-    }
-    if (conversation.userId !== userId) {
-      throw new ValidationError('Conversation does not belong to user')
-    }
-
     // Find the message
     const message = await this.messageRepo.findById(messageId)
     if (!message) {
@@ -41,13 +32,14 @@ export class PlanService {
       throw new ValidationError('Only AI messages can be applied to plan')
     }
 
-    if (message.conversationId !== conversationId) {
-      throw new ValidationError('Message does not belong to this conversation')
+    // Verify message belongs to the user
+    if (message.userId !== userId) {
+      throw new ValidationError('Message does not belong to this user')
     }
 
-    // Create plan section
+    // Create plan section using the message's conversation ID
     const planSection = await this.planSectionRepo.create({
-      conversationId,
+      conversationId: message.conversationId,
       userId,
       content: message.content,
       locked: false,
@@ -56,7 +48,7 @@ export class PlanService {
 
     // Create plan update message
     const planUpdateMessage = await this.messageRepo.create({
-      conversationId,
+      conversationId: message.conversationId,
       userId,
       type: 'plan_update',
       content: `Applied message ${messageId} to plan`,
@@ -94,10 +86,6 @@ export class PlanService {
       throw new ValidationError('Plan section does not belong to user')
     }
 
-    if (section.conversationId !== conversationId) {
-      throw new ValidationError('Plan section does not belong to this conversation')
-    }
-
     // Update section
     const updated = await this.planSectionRepo.update(sectionId, updates)
     if (!updated) {
@@ -131,10 +119,6 @@ export class PlanService {
 
     if (section.userId !== userId) {
       throw new ValidationError('Plan section does not belong to user')
-    }
-
-    if (section.conversationId !== conversationId) {
-      throw new ValidationError('Plan section does not belong to this conversation')
     }
 
     await this.planSectionRepo.delete(sectionId)

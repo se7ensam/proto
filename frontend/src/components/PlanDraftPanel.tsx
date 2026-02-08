@@ -1,16 +1,19 @@
 import { PlanSection } from '../types'
 import PlanSectionItem from './PlanSectionItem'
+import { GitHubIntegration } from './GitHubIntegration'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { FileText, Sparkles } from 'lucide-react'
 
 interface PlanDraftPanelProps {
   sections: PlanSection[]
   onLockSection: (sectionId: string) => void
+  conversationId?: string
 }
 
 export default function PlanDraftPanel({
   sections,
   onLockSection,
+  conversationId = 'default',
 }: PlanDraftPanelProps) {
   return (
     <Card className="flex flex-col h-full rounded-none border-0">
@@ -42,6 +45,13 @@ export default function PlanDraftPanel({
                 onLockSection={onLockSection}
               />
             ))}
+            
+            {/* GitHub Integration */}
+            {sections.length > 0 && (
+              <div className="pt-4 border-t">
+                <GitHubIntegration conversationId={conversationId} />
+              </div>
+            )}
           </div>
         )}
       </CardContent>

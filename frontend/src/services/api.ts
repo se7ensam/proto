@@ -300,6 +300,88 @@ class ApiService {
 
     return response.json()
   }
+
+  // ==================== GitHub Integration ====================
+
+  async initiateGitHubAuth(conversationId: string, collaboratorEmail?: string): Promise<{ authUrl: string; state: string }> {
+    const response = await fetch(`${API_BASE}/github/auth/initiate`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({
+        conversationId,
+        collaboratorEmail,
+      }),
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.error?.message || 'Failed to initiate GitHub auth')
+    }
+
+    return response.json()
+  }
+
+  async getGitHubIntegration(conversationId: string): Promise<{
+    integrated: boolean
+    id?: string
+    githubUsername?: string
+    githubAvatarUrl?: string
+    repoName?: string
+    repoFullName?: string
+    repoUrl?: string
+    repoOwner?: string
+    collaboratorUsername?: string
+    collaborationStatus?: string
+    integrationStatus?: string
+    lastSyncAt?: string
+    createdAt?: string
+  }> {
+    const response = await fetch(
+      `${API_BASE}/github/integration/${conversationId}`,
+      {
+        headers: this.getHeaders(),
+      }
+    )
+
+    if (!response.ok) {
+      return { integrated: false }
+    }
+
+    return response.json()
+  }
+
+  async getGitHubSyncHistory(conversationId: string): Promise<{ history: any[] }> {
+    const response = await fetch(
+      `${API_BASE}/github/integration/${conversationId}/history`,
+      {
+        headers: this.getHeaders(),
+      }
+    )
+
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.error?.message || 'Failed to fetch sync history')
+    }
+
+    return response.json()
+  }
+
+  async disconnectGitHub(conversationId: string): Promise<{ success: boolean }> {
+    const response = await fetch(
+      `${API_BASE}/github/integration/${conversationId}`,
+      {
+        method: 'DELETE',
+        headers: this.getHeaders(),
+      }
+    )
+
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.error?.message || 'Failed to disconnect GitHub')
+    }
+
+    return response.json()
+  }
 }
 
 export const apiService = new ApiService()

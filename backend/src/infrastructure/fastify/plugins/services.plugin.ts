@@ -16,6 +16,8 @@ import { PlanningRulesRepository } from '../../repositories/planning-rules.repos
 import { GeminiLLMService } from '../../services/llm.service'
 import { JWTTokenService } from '../../services/token.service'
 import { GoogleAuthService } from '../../services/google-auth.service'
+import { GitHubAuthService } from '../../services/github-auth.service'
+import { GitHubIntegrationRepository } from '../../repositories/github-integration.repository'
 import { getRedisClient } from '../../redis'
 import { MessageSyncJob } from '../../jobs/message-sync.job'
 
@@ -28,6 +30,8 @@ declare module 'fastify' {
     }
     messageRepo: CachedMessageRepository
     messageSyncJob: MessageSyncJob
+    githubAuth: GitHubAuthService
+    githubIntegrationRepo: GitHubIntegrationRepository
   }
 }
 
@@ -40,8 +44,8 @@ const servicesPlugin: FastifyPluginAsync = async (fastify) => {
   
   try {
     // Check if Redis URL is valid (not just "/")
-    const redisUrl = process.env.REDIS_URL
-    if (redisUrl && redisUrl !== '/' && !redisUrl.startsWith('redis://localhost')) {
+    const redisUrl = process.env.REDIS_URL?.trim()
+    if (redisUrl && redisUrl !== '/' && redisUrl.length > 1) {
       redis = getRedisClient()
       
       // Verify Redis connection with timeout
@@ -72,10 +76,12 @@ const servicesPlugin: FastifyPluginAsync = async (fastify) => {
   const conversationRepo = new ConversationRepository(db)
   const userRepo = new UserRepository(db)
   const planningRulesRepo = new PlanningRulesRepository(db)
+  const githubIntegrationRepo = new GitHubIntegrationRepository(db)
 
   // Initialize infrastructure services
   const llmService = new GeminiLLMService(process.env.GEMINI_API_KEY)
   const tokenService = new JWTTokenService(process.env.JWT_SECRET || 'your-secret-key')
+  const githubAuthService = new GitHubAuthService()
   
   let googleAuthService: GoogleAuthService | undefined
   if (process.env.GOOGLE_CLIENT_ID) {
@@ -114,6 +120,9 @@ const servicesPlugin: FastifyPluginAsync = async (fastify) => {
     plan: planService,
     auth: authService,
   })
+  
+  fastify.decorate('githubAuth', githubAuthService)
+  fastify.decorate('githubIntegrationRepo', githubIntegrationRepo)
   
   if (useRedis && messageRepo && messageSyncJob) {
     fastify.decorate('messageRepo', messageRepo)

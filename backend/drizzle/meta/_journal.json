@@ -8,6 +8,13 @@
       "when": 1768603952771,
       "tag": "0000_chilly_randall",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1768649101628,
+      "tag": "0001_strong_chimera",
+      "breakpoints": true
     }
   ]
 }
