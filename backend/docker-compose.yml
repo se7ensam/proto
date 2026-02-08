@@ -18,15 +18,13 @@ services:
       dockerfile: Dockerfile
     ports:
       - "3001:3001"
-    volumes:
-      - .:/app
-      - /app/node_modules
     env_file:
       - .env
     environment:
       - PORT=3001
       - REDIS_URL=redis://redis:6379
       - DATABASE_URL=postgres://postgres:postgres@postgres:5432/ai_chat
+      - NODE_ENV=production
     depends_on:
       - redis
       - postgres

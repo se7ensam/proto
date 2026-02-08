@@ -18,6 +18,8 @@ function App() {
 
   // Load initial data
   useEffect(() => {
+    if (!isAuthenticated) return // Don't load data if not authenticated
+    
     const loadData = async () => {
       try {
         const [historyRes, planRes] = await Promise.all([
@@ -28,10 +30,16 @@ function App() {
         setPlanSections(planRes.sections)
       } catch (error) {
         console.error('Failed to load initial data:', error)
+        // If we get 401, user token is invalid
+        if (error instanceof Error && error.message.includes('401')) {
+          apiService.logout()
+          setIsAuthenticated(false)
+          toast.error('Session expired. Please login again.')
+        }
       }
     }
     loadData()
-  }, [])
+  }, [isAuthenticated]) // Re-run when authentication status changes
 
   const handleSendMessage = async (content: string) => {
     let streamingMessageId: string | null = null
@@ -128,6 +136,15 @@ function App() {
              toast.info('Generation stopped', { id: toastId })
              return
           }
+          
+          // Handle authentication errors
+          if (error.includes('Unauthorized') || error.includes('401')) {
+            apiService.logout()
+            setIsAuthenticated(false)
+            toast.error('Session expired. Please login again.', { id: toastId })
+            return
+          }
+          
           console.error('Failed to send message:', error)
           toast.error(error, { id: toastId })
           aiMessageVisible = true // Prevent delayed show from firing
