@@ -12,6 +12,7 @@ export interface Message {
   content: string
   timestamp: Date
   metadata?: Record<string, unknown>
+  userEmail?: string
 }
 
 export interface PlanSection {
@@ -30,6 +31,16 @@ export interface Conversation {
   createdAt: Date
   updatedAt: Date
   metadata?: Record<string, unknown>
+}
+
+export type ConversationRole = 'host' | 'member'
+
+export interface ConversationMember {
+  id: string
+  conversationId: string
+  userId: string
+  role: ConversationRole
+  joinedAt: Date
 }
 
 export interface User {

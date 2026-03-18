@@ -16,6 +16,10 @@ const regenerateMessageSchema = z.object({
   conversationId: z.string().optional().default('default'),
 })
 
+const addMemberSchema = z.object({
+  userId: z.string().uuid(),
+})
+
 const chatRoutes: FastifyPluginAsync = async (fastify) => {
   // Send message (streaming)
   fastify.post(
@@ -133,6 +137,60 @@ const chatRoutes: FastifyPluginAsync = async (fastify) => {
         messages,
         conversationId: params.conversationId,
       })
+    }
+  )
+
+  // Get all user conversations
+  fastify.get(
+    '/conversations',
+    {
+      onRequest: [fastify.authenticate],
+    },
+    async (request, reply) => {
+      const userId = request.userId!
+      const conversations = await fastify.services.chat.getConversations(userId)
+
+      return reply.send({ conversations })
+    }
+  )
+
+  // Add member to chat
+  fastify.post(
+    '/:conversationId/members',
+    {
+      onRequest: [fastify.authenticate],
+    },
+    async (request, reply) => {
+      const params = z.object({
+        conversationId: z.string(),
+      }).parse(request.params)
+      
+      const body = addMemberSchema.parse(request.body)
+      const userId = request.userId!
+
+      await fastify.services.chat.addMember(userId, params.conversationId, body.userId)
+
+      return reply.send({ success: true })
+    }
+  )
+
+  // Remove member from chat
+  fastify.delete(
+    '/:conversationId/members/:memberId',
+    {
+      onRequest: [fastify.authenticate],
+    },
+    async (request, reply) => {
+      const params = z.object({
+        conversationId: z.string(),
+        memberId: z.string().uuid(),
+      }).parse(request.params)
+      
+      const userId = request.userId!
+
+      await fastify.services.chat.removeMember(userId, params.conversationId, params.memberId)
+
+      return reply.send({ success: true })
     }
   )
 }

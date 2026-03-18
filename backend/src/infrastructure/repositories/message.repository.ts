@@ -2,7 +2,7 @@ import { eq, desc } from 'drizzle-orm'
 import { NodePgDatabase } from 'drizzle-orm/node-postgres'
 import { IMessageRepository } from '../../domain/repositories'
 import { Message } from '../../domain/types'
-import { messages } from '../../db/schema'
+import { messages, users } from '../../db/schema'
 import { DatabaseError } from '../../domain/errors'
 import * as schema from '../../db/schema'
 
@@ -52,13 +52,23 @@ export class MessageRepository implements IMessageRepository {
   async findByConversationId(conversationId: string, limit: number = 100): Promise<Message[]> {
     try {
       const results = await this.db
-        .select()
+        .select({
+          id: messages.id,
+          conversationId: messages.conversationId,
+          userId: messages.userId,
+          type: messages.type,
+          content: messages.content,
+          timestamp: messages.timestamp,
+          metadata: messages.metadata,
+          userEmail: users.email,
+        })
         .from(messages)
+        .leftJoin(users, eq(messages.userId, users.id))
         .where(eq(messages.conversationId, conversationId))
         .orderBy(desc(messages.timestamp))
         .limit(limit)
 
-      return results.map((m) => this.toDomain(m)).reverse()
+      return results.map((m) => this.toDomain(m as any)).reverse()
     } catch (error) {
       throw new DatabaseError('Failed to find messages by conversation', error as Error)
     }
@@ -105,7 +115,7 @@ export class MessageRepository implements IMessageRepository {
     }
   }
 
-  private toDomain(row: typeof messages.$inferSelect): Message {
+  private toDomain(row: any): Message {
     return {
       id: row.id,
       conversationId: row.conversationId,
@@ -114,6 +124,7 @@ export class MessageRepository implements IMessageRepository {
       content: row.content,
       timestamp: row.timestamp,
       metadata: row.metadata as Record<string, unknown> | undefined,
+      userEmail: row.userEmail,
     }
   }
 }

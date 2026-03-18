@@ -1,8 +1,8 @@
-import { eq } from 'drizzle-orm'
+import { eq, or, and } from 'drizzle-orm'
 import { NodePgDatabase } from 'drizzle-orm/node-postgres'
 import { IConversationRepository } from '../../domain/repositories'
 import { Conversation } from '../../domain/types'
-import { conversations } from '../../db/schema'
+import { conversations, conversationMembers } from '../../db/schema'
 import { DatabaseError } from '../../domain/errors'
 import * as schema from '../../db/schema'
 
@@ -41,13 +41,33 @@ export class ConversationRepository implements IConversationRepository {
 
   async findByUserId(userId: string): Promise<Conversation[]> {
     try {
-      const results = await this.db
+      // Find conversations the user owns
+      const owned = await this.db
         .select()
         .from(conversations)
         .where(eq(conversations.userId, userId))
-        .orderBy(conversations.updatedAt)
+        
+      // Find conversations the user is a member of
+      const memberOf = await this.db
+        .select({
+          id: conversations.id,
+          userId: conversations.userId,
+          createdAt: conversations.createdAt,
+          updatedAt: conversations.updatedAt,
+          metadata: conversations.metadata,
+        })
+        .from(conversations)
+        .innerJoin(conversationMembers, eq(conversations.id, conversationMembers.conversationId))
+        .where(eq(conversationMembers.userId, userId))
 
-      return results.map((c) => this.toDomain(c))
+      // Combine and deduplicate
+      const allConversations = [...owned, ...memberOf]
+      const uniqueConversations = Array.from(new Map(allConversations.map(c => [c.id, c])).values())
+
+      // Sort by updatedAt descending
+      uniqueConversations.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
+
+      return uniqueConversations.map((c) => this.toDomain(c))
     } catch (error) {
       throw new DatabaseError('Failed to find conversations by user', error as Error)
     }
@@ -88,8 +108,21 @@ export class ConversationRepository implements IConversationRepository {
       if (isValidUuid) {
         // Try to find existing conversation by UUID
         const existing = await this.findById(conversationId)
-        if (existing && existing.userId === userId) {
-          return existing
+        if (existing) {
+          if (existing.userId === userId) {
+            return existing
+          }
+          // If not owner, check if they are an invited member
+          const members = await this.getMembers(conversationId)
+          if (members.some(m => m.userId === userId)) {
+            return existing
+          }
+        }
+      } else {
+        // For "default" or invalid UUIDs, fetch the user's most recent valid conversation
+        const existingChats = await this.findByUserId(userId)
+        if (existingChats.length > 0) {
+          return existingChats[0]
         }
       }
 
@@ -104,6 +137,54 @@ export class ConversationRepository implements IConversationRepository {
       return this.toDomain(created)
     } catch (error) {
       throw new DatabaseError('Failed to get or create conversation', error as Error)
+    }
+  }
+
+  async addMember(conversationId: string, userId: string, role: string = 'member'): Promise<void> {
+    try {
+      await this.db
+        .insert(conversationMembers)
+        .values({
+          conversationId,
+          userId,
+          role,
+        })
+        .onConflictDoNothing() // Let it gracefully fail if already exists or use try-catch
+    } catch (error) {
+      throw new DatabaseError('Failed to add member', error as Error)
+    }
+  }
+
+  async removeMember(conversationId: string, userId: string): Promise<boolean> {
+    try {
+      const result = await this.db
+        .delete(conversationMembers)
+        .where(
+          and(
+            eq(conversationMembers.conversationId, conversationId),
+            eq(conversationMembers.userId, userId)
+          )
+        )
+      return result.rowCount ? result.rowCount > 0 : false
+    } catch (error) {
+      throw new DatabaseError('Failed to remove member', error as Error)
+    }
+  }
+
+  async getMembers(conversationId: string): Promise<{userId: string, role: string, joinedAt: Date}[]> {
+    try {
+      const results = await this.db
+        .select()
+        .from(conversationMembers)
+        .where(eq(conversationMembers.conversationId, conversationId))
+      
+      return results.map(r => ({
+        userId: r.userId,
+        role: r.role,
+        joinedAt: r.joinedAt
+      }))
+    } catch (error) {
+      throw new DatabaseError('Failed to get members', error as Error)
     }
   }
 
