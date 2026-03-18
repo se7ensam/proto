@@ -19,6 +19,17 @@ export const conversations = pgTable('conversations', {
     userIdIdx: index('conversations_user_id_idx').on(table.userId),
 }))
 
+export const conversationMembers = pgTable('conversation_members', {
+    id: uuid('id').defaultRandom().primaryKey(),
+    conversationId: uuid('conversation_id').notNull().references(() => conversations.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    role: text('role').notNull().default('member'), // 'host' or 'member'
+    joinedAt: timestamp('joined_at').defaultNow().notNull(),
+}, (table) => ({
+    conversationIdIdx: index('conversation_members_conversation_id_idx').on(table.conversationId),
+    userIdIdx: index('conversation_members_user_id_idx').on(table.userId),
+}))
+
 export const messages = pgTable('messages', {
     id: uuid('id').defaultRandom().primaryKey(),
     conversationId: uuid('conversation_id').notNull().references(() => conversations.id, { onDelete: 'cascade' }),
@@ -145,3 +156,6 @@ export type NewGitHubIntegration = typeof githubIntegrations.$inferInsert
 
 export type GitHubSyncHistory = typeof githubSyncHistory.$inferSelect
 export type NewGitHubSyncHistory = typeof githubSyncHistory.$inferInsert
+
+export type ConversationMember = typeof conversationMembers.$inferSelect
+export type NewConversationMember = typeof conversationMembers.$inferInsert

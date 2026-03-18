@@ -20,6 +20,7 @@ import authRoutes from './infrastructure/fastify/routes/auth.routes'
 import chatRoutes from './infrastructure/fastify/routes/chat.routes'
 import planRoutes from './infrastructure/fastify/routes/plan.routes'
 import githubRoutes from './infrastructure/fastify/routes/github.routes'
+import usersRoutes from './infrastructure/fastify/routes/users.routes'
 
 export async function buildApp() {
   const isDevelopment = process.env.NODE_ENV !== 'production'
@@ -87,6 +88,7 @@ export async function buildApp() {
   await app.register(chatRoutes, { prefix: '/api/chat' })
   await app.register(planRoutes, { prefix: '/api/plan' })
   await app.register(githubRoutes, { prefix: '/api/github' })
+  await app.register(usersRoutes, { prefix: '/api/users' })
 
   return app
 }

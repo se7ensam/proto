@@ -4,7 +4,7 @@
  */
 
 import { IMessageRepository, IConversationRepository, IPlanningRulesRepository } from '../repositories'
-import { Message, ConversationContext, LLMRequest } from '../types'
+import { Message, ConversationContext, LLMRequest, Conversation } from '../types'
 import { NotFoundError, ValidationError } from '../errors'
 
 export interface ILLMService {
@@ -180,23 +180,60 @@ export class ChatService {
   }
 
   /**
+   * Get all conversations for a user
+   */
+  async getConversations(userId: string): Promise<Conversation[]> {
+    return this.conversationRepo.findByUserId(userId)
+  }
+
+  /**
    * Get conversation history
-   * Uses userId to leverage Redis cache for fast access
    */
   async getConversationHistory(userId: string, conversationId: string): Promise<Message[]> {
-    // Use findByUserId to leverage Redis cache (much faster!)
-    // This returns ALL user messages, which is what we want for context
-    return this.messageRepo.findByUserId(userId, 100)
+    // Ensure the user actually has access to this conversation
+    const conversation = await this.conversationRepo.getOrCreate(userId, conversationId)
+    
+    // Fetch messages specifically for ONLY this conversation
+    return this.messageRepo.findByConversationId(conversation.id, 100)
+  }
+
+  /**
+   * Add a member to a conversation
+   */
+  async addMember(userId: string, conversationId: string, memberId: string): Promise<void> {
+    const conversation = await this.conversationRepo.getOrCreate(userId, conversationId)
+    if (conversation.userId !== userId) {
+      throw new ValidationError('Only the host can add members')
+    }
+
+    await this.conversationRepo.addMember(conversation.id, memberId, 'member')
+  }
+
+  /**
+   * Remove a member from a conversation
+   */
+  async removeMember(userId: string, conversationId: string, memberId: string): Promise<void> {
+    const conversation = await this.conversationRepo.getOrCreate(userId, conversationId)
+    if (conversation.userId !== userId) {
+      throw new ValidationError('Only the host can remove members')
+    }
+
+    const removed = await this.conversationRepo.removeMember(conversation.id, memberId)
+    if (!removed) {
+      throw new NotFoundError('Member', memberId)
+    }
   }
 
   /**
    * Get conversation context for LLM
-   * Uses userId to leverage Redis caching
    */
   private async getConversationContext(userId: string, conversationId: string): Promise<ConversationContext> {
+    // Ensure access to conversation
+    const conversation = await this.conversationRepo.getOrCreate(userId, conversationId)
+
     const [messages, planningRules] = await Promise.all([
-      this.messageRepo.findByUserId(userId, 10), // Last 10 messages from Redis cache!
-      this.planningRulesRepo.getRules(conversationId),
+      this.messageRepo.findByConversationId(conversation.id, 10), // Last 10 messages of THIS chat
+      this.planningRulesRepo.getRules(conversation.id),
     ])
 
     return {

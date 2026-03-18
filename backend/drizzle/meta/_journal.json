@@ -15,6 +15,13 @@
       "when": 1768649101628,
       "tag": "0001_strong_chimera",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1773858813699,
+      "tag": "0002_blue_exiles",
+      "breakpoints": true
     }
   ]
 }

@@ -29,6 +29,11 @@ export interface IConversationRepository {
   update(id: string, updates: Partial<Conversation>): Promise<Conversation | null>
   delete(id: string): Promise<boolean>
   getOrCreate(userId: string, conversationId: string): Promise<Conversation>
+  
+  // Member management
+  addMember(conversationId: string, userId: string, role?: string): Promise<void>
+  removeMember(conversationId: string, userId: string): Promise<boolean>
+  getMembers(conversationId: string): Promise<{userId: string, role: string, joinedAt: Date}[]>
 }
 
 export interface IUserRepository {
