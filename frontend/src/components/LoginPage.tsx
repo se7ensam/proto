@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { AlertCircle } from 'lucide-react'
+import { GoogleLogin } from '@react-oauth/google'
 
 interface LoginPageProps {
     onLoginSuccess: () => void
@@ -34,6 +35,23 @@ export default function LoginPage({ onLoginSuccess }: LoginPageProps) {
             onLoginSuccess()
         } catch (err: any) {
             setError(err.message)
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    const handleGoogleSuccess = async (credentialResponse: any) => {
+        setError('')
+        setLoading(true)
+        try {
+            if (!credentialResponse.credential) {
+                throw new Error('No credential received from Google')
+            }
+            const result = await apiService.loginWithGoogle(credentialResponse.credential)
+            apiService.setToken(result.token)
+            onLoginSuccess()
+        } catch (err: any) {
+            setError(err.message || 'Google Login failed')
         } finally {
             setLoading(false)
         }
@@ -93,6 +111,26 @@ export default function LoginPage({ onLoginSuccess }: LoginPageProps) {
                             {loading ? 'Processing...' : isLogin ? 'Sign In' : 'Sign Up'}
                         </Button>
                     </form>
+
+                    <div className="relative mt-6 mb-4">
+                        <div className="absolute inset-0 flex items-center">
+                            <span className="w-full border-t border-muted" />
+                        </div>
+                        <div className="relative flex justify-center text-xs uppercase">
+                            <span className="bg-white/80 dark:bg-card/80 px-2 text-muted-foreground">
+                                Or continue with
+                            </span>
+                        </div>
+                    </div>
+
+                    <div className="flex justify-center">
+                        <GoogleLogin
+                            onSuccess={handleGoogleSuccess}
+                            onError={() => setError('Google Login Failed')}
+                            theme="filled_black"
+                            shape="rectangular"
+                        />
+                    </div>
 
                     <div className="mt-6 text-center">
                         <p className="text-sm text-muted-foreground">
