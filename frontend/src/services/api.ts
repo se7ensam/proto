@@ -1,4 +1,4 @@
-import { Message, PlanSection } from '../types'
+import { ConversationSummary, Message, PlanSection } from '../types'
 
 const API_BASE = '/api'
 
@@ -15,8 +15,31 @@ export interface RegenerateResponse {
 
 export interface ApplyToPlanResponse {
   planSection: PlanSection
+  planSections?: PlanSection[]
   planUpdateMessage: Message
+  appliedMode?: 'text' | 'plan_doc' | 'phase_replace'
+  planRevision?: number
   conversationId: string
+}
+
+export interface GetConversationsResponse {
+  conversations: ConversationSummary[]
+}
+
+export interface CreateConversationResponse {
+  conversation: ConversationSummary
+}
+
+export interface DeleteConversationResponse {
+  conversation: ConversationSummary
+}
+
+export interface RestoreConversationResponse {
+  conversation: ConversationSummary
+}
+
+export interface UpdateConversationTitleResponse {
+  conversation: ConversationSummary
 }
 
 class ApiService {
@@ -49,6 +72,42 @@ class ApiService {
       headers['Authorization'] = `Bearer ${this.token}`
     }
     return headers
+  }
+
+  private normalizePlanSection(section: any): PlanSection {
+    return {
+      ...section,
+      timestamp: new Date(section.timestamp),
+    }
+  }
+
+  private normalizeConversation(conversation: any): ConversationSummary {
+    const metadata =
+      conversation && typeof conversation.metadata === 'object' && !Array.isArray(conversation.metadata)
+        ? conversation.metadata
+        : undefined
+    const rawTitle =
+      typeof conversation.title === 'string'
+        ? conversation.title
+        : typeof metadata?.title === 'string'
+          ? metadata.title
+          : undefined
+    const title = rawTitle?.trim() || 'New chat'
+    const deletedAt =
+      typeof conversation.deletedAt === 'string'
+        ? conversation.deletedAt
+        : typeof metadata?.deletedAt === 'string'
+          ? metadata.deletedAt
+          : undefined
+
+    return {
+      ...conversation,
+      createdAt: new Date(conversation.createdAt),
+      updatedAt: new Date(conversation.updatedAt),
+      title,
+      deletedAt: deletedAt ? new Date(deletedAt) : undefined,
+      isEmpty: Boolean(conversation.isEmpty),
+    }
   }
 
   async login(email: string, password: string): Promise<{ user: any; token: string }> {
@@ -239,6 +298,117 @@ class ApiService {
     }
   }
 
+  async getConversations(): Promise<GetConversationsResponse> {
+    const response = await fetch(`${API_BASE}/chat/conversations`, {
+      headers: this.getHeaders(),
+    })
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        throw new Error('Unauthorized: Please login again')
+      }
+      throw new Error('Failed to fetch conversations')
+    }
+
+    const data = await response.json()
+    return {
+      conversations: (data.conversations || []).map((conversation: any) => this.normalizeConversation(conversation)),
+    }
+  }
+
+  async getDeletedConversations(): Promise<GetConversationsResponse> {
+    const response = await fetch(`${API_BASE}/chat/conversations/deleted`, {
+      headers: this.getHeaders(),
+    })
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        throw new Error('Unauthorized: Please login again')
+      }
+      throw new Error('Failed to fetch deleted conversations')
+    }
+
+    const data = await response.json()
+    return {
+      conversations: (data.conversations || []).map((conversation: any) => this.normalizeConversation(conversation)),
+    }
+  }
+
+  async createConversation(): Promise<CreateConversationResponse> {
+    const response = await fetch(`${API_BASE}/chat/conversations`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({}),
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.error?.message || 'Failed to create conversation')
+    }
+
+    const data = await response.json()
+    return {
+      conversation: this.normalizeConversation({ ...data.conversation, isEmpty: true }),
+    }
+  }
+
+  async deleteConversation(conversationId: string): Promise<DeleteConversationResponse> {
+    const response = await fetch(`${API_BASE}/chat/conversations/${conversationId}`, {
+      method: 'DELETE',
+      headers: this.getHeaders(),
+      body: JSON.stringify({}),
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.error?.message || 'Failed to delete conversation')
+    }
+
+    const data = await response.json()
+    return {
+      conversation: this.normalizeConversation(data.conversation),
+    }
+  }
+
+  async restoreConversation(conversationId: string): Promise<RestoreConversationResponse> {
+    const response = await fetch(`${API_BASE}/chat/conversations/${conversationId}/restore`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({}),
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.error?.message || 'Failed to restore conversation')
+    }
+
+    const data = await response.json()
+    return {
+      conversation: this.normalizeConversation(data.conversation),
+    }
+  }
+
+  async updateConversationTitle(
+    conversationId: string,
+    title: string
+  ): Promise<UpdateConversationTitleResponse> {
+    const response = await fetch(`${API_BASE}/chat/conversations/${conversationId}`, {
+      method: 'PATCH',
+      headers: this.getHeaders(),
+      body: JSON.stringify({ title }),
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.error?.message || 'Failed to update conversation title')
+    }
+
+    const data = await response.json()
+    return {
+      conversation: this.normalizeConversation(data.conversation),
+    }
+  }
+
   async applyToPlan(messageId: string): Promise<ApplyToPlanResponse> {
     const response = await fetch(`${API_BASE}/plan/apply`, {
       method: 'POST',
@@ -254,7 +424,18 @@ class ApiService {
       throw new Error(errorData.error?.message || 'Failed to apply to plan')
     }
 
-    return response.json()
+    const data = await response.json()
+    return {
+      ...data,
+      planSection: this.normalizePlanSection(data.planSection),
+      planSections: Array.isArray(data.planSections)
+        ? data.planSections.map((section: any) => this.normalizePlanSection(section))
+        : undefined,
+      planUpdateMessage: {
+        ...data.planUpdateMessage,
+        timestamp: new Date(data.planUpdateMessage.timestamp),
+      },
+    }
   }
 
   async getPlanSections(): Promise<{ sections: PlanSection[] }> {
@@ -274,10 +455,7 @@ class ApiService {
 
     const data = await response.json()
     return {
-      sections: data.sections.map((section: any) => ({
-        ...section,
-        timestamp: new Date(section.timestamp),
-      })),
+      sections: data.sections.map((section: any) => this.normalizePlanSection(section)),
     }
   }
 

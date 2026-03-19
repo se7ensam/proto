@@ -40,6 +40,16 @@ export class ConversationRepository implements IConversationRepository {
   }
 
   async findByUserId(userId: string): Promise<Conversation[]> {
+    const all = await this.findAllByUserId(userId)
+    return all.filter((conversation) => !this.isConversationDeleted(conversation.metadata))
+  }
+
+  async findDeletedByUserId(userId: string): Promise<Conversation[]> {
+    const all = await this.findAllByUserId(userId)
+    return all.filter((conversation) => this.isConversationDeleted(conversation.metadata))
+  }
+
+  private async findAllByUserId(userId: string): Promise<Conversation[]> {
     try {
       // Find conversations the user owns
       const owned = await this.db
@@ -99,6 +109,34 @@ export class ConversationRepository implements IConversationRepository {
     }
   }
 
+  async softDelete(id: string): Promise<Conversation | null> {
+    try {
+      const existing = await this.findById(id)
+      if (!existing) {
+        return null
+      }
+
+      const metadata = this.withDeletedAt(existing.metadata, new Date().toISOString())
+      return this.update(id, { metadata })
+    } catch (error) {
+      throw new DatabaseError('Failed to soft-delete conversation', error as Error)
+    }
+  }
+
+  async restore(id: string): Promise<Conversation | null> {
+    try {
+      const existing = await this.findById(id)
+      if (!existing) {
+        return null
+      }
+
+      const metadata = this.withDeletedAt(existing.metadata, undefined)
+      return this.update(id, { metadata })
+    } catch (error) {
+      throw new DatabaseError('Failed to restore conversation', error as Error)
+    }
+  }
+
   async getOrCreate(userId: string, conversationId: string): Promise<Conversation> {
     try {
       // Check if conversationId is a valid UUID
@@ -108,7 +146,7 @@ export class ConversationRepository implements IConversationRepository {
       if (isValidUuid) {
         // Try to find existing conversation by UUID
         const existing = await this.findById(conversationId)
-        if (existing) {
+        if (existing && !this.isConversationDeleted(existing.metadata)) {
           if (existing.userId === userId) {
             return existing
           }
@@ -196,5 +234,31 @@ export class ConversationRepository implements IConversationRepository {
       updatedAt: row.updatedAt,
       metadata: row.metadata as Record<string, unknown> | undefined,
     }
+  }
+
+  private isConversationDeleted(metadata: unknown): boolean {
+    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+      return false
+    }
+
+    const deletedAt = (metadata as Record<string, unknown>).deletedAt
+    return typeof deletedAt === 'string' && deletedAt.length > 0
+  }
+
+  private withDeletedAt(
+    metadata: Conversation['metadata'],
+    deletedAt?: string
+  ): Record<string, unknown> {
+    const next = {
+      ...(metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata : {}),
+    } as Record<string, unknown>
+
+    if (deletedAt) {
+      next.deletedAt = deletedAt
+    } else {
+      delete next.deletedAt
+    }
+
+    return next
   }
 }

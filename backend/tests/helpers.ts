@@ -29,6 +29,7 @@ export function createMockPlanSectionRepository(): IPlanSectionRepository {
     findByConversationId: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
+    deleteByConversationId: vi.fn(),
   }
 }
 
@@ -37,9 +38,15 @@ export function createMockConversationRepository(): IConversationRepository {
     create: vi.fn(),
     findById: vi.fn(),
     findByUserId: vi.fn(),
+    findDeletedByUserId: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
+    softDelete: vi.fn(),
+    restore: vi.fn(),
     getOrCreate: vi.fn(),
+    addMember: vi.fn(),
+    removeMember: vi.fn(),
+    getMembers: vi.fn(),
   }
 }
 
@@ -70,6 +77,7 @@ export function createMockLLMService(): ILLMService {
   return {
     generateResponse: vi.fn(),
     generateResponseStream: vi.fn(),
+    generateConversationTitle: vi.fn(),
   }
 }
 

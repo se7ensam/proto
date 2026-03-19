@@ -89,7 +89,13 @@ const servicesPlugin: FastifyPluginAsync = async (fastify) => {
   }
 
   // Initialize domain services
-  const chatService = new ChatService(messageRepo, conversationRepo, planningRulesRepo, llmService)
+  const chatService = new ChatService(
+    messageRepo,
+    conversationRepo,
+    planningRulesRepo,
+    planSectionRepo,
+    llmService
+  )
   const planService = new PlanService(planSectionRepo, messageRepo, conversationRepo)
   const authService = new AuthService(userRepo, tokenService, googleAuthService)
 

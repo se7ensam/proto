@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, uuid, boolean, jsonb, index } from 'drizzle-orm/pg-core'
+import { pgTable, text, timestamp, uuid, boolean, jsonb, index, integer } from 'drizzle-orm/pg-core'
 
 export const users = pgTable('users', {
     id: uuid('id').defaultRandom().primaryKey(),
@@ -52,9 +52,14 @@ export const planSections = pgTable('plan_sections', {
     locked: boolean('locked').default(false).notNull(),
     timestamp: timestamp('timestamp').defaultNow().notNull(),
     sourceMessageId: uuid('source_message_id').references(() => messages.id, { onDelete: 'set null' }),
+    phaseId: text('phase_id'),
+    phaseOrder: integer('phase_order'),
+    structuredData: jsonb('structured_data'),
 }, (table) => ({
     conversationIdIdx: index('plan_sections_conversation_id_idx').on(table.conversationId),
     userIdIdx: index('plan_sections_user_id_idx').on(table.userId),
+    phaseIdIdx: index('plan_sections_phase_id_idx').on(table.phaseId),
+    phaseOrderIdx: index('plan_sections_phase_order_idx').on(table.phaseOrder),
 }))
 
 export const planningRules = pgTable('planning_rules', {

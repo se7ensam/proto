@@ -41,8 +41,11 @@ const planRoutes: FastifyPluginAsync = async (fastify) => {
 
       return reply.send({
         planSection: result.planSection,
+        planSections: result.planSections,
         planUpdateMessage: result.planUpdateMessage,
-        conversationId: body.conversationId,
+        appliedMode: result.appliedMode,
+        planRevision: result.planRevision,
+        conversationId: result.planSection.conversationId,
       })
     }
   )

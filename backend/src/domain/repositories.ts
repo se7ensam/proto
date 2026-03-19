@@ -20,14 +20,18 @@ export interface IPlanSectionRepository {
   findByConversationId(conversationId: string): Promise<PlanSection[]>
   update(id: string, updates: Partial<PlanSection>): Promise<PlanSection | null>
   delete(id: string): Promise<boolean>
+  deleteByConversationId(conversationId: string): Promise<number>
 }
 
 export interface IConversationRepository {
   create(conversation: Omit<Conversation, 'id' | 'createdAt' | 'updatedAt'>): Promise<Conversation>
   findById(id: string): Promise<Conversation | null>
   findByUserId(userId: string): Promise<Conversation[]>
+  findDeletedByUserId(userId: string): Promise<Conversation[]>
   update(id: string, updates: Partial<Conversation>): Promise<Conversation | null>
   delete(id: string): Promise<boolean>
+  softDelete(id: string): Promise<Conversation | null>
+  restore(id: string): Promise<Conversation | null>
   getOrCreate(userId: string, conversationId: string): Promise<Conversation>
   
   // Member management

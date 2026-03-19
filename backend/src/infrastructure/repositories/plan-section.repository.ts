@@ -19,6 +19,9 @@ export class PlanSectionRepository implements IPlanSectionRepository {
           content: section.content,
           locked: section.locked,
           sourceMessageId: section.sourceMessageId,
+          phaseId: section.phaseId,
+          phaseOrder: section.phaseOrder,
+          structuredData: section.structuredData as any,
         })
         .returning()
 
@@ -63,6 +66,10 @@ export class PlanSectionRepository implements IPlanSectionRepository {
         .set({
           content: updates.content,
           locked: updates.locked,
+          sourceMessageId: updates.sourceMessageId,
+          phaseId: updates.phaseId,
+          phaseOrder: updates.phaseOrder,
+          structuredData: updates.structuredData as any,
         })
         .where(eq(planSections.id, id))
         .returning()
@@ -82,6 +89,18 @@ export class PlanSectionRepository implements IPlanSectionRepository {
     }
   }
 
+  async deleteByConversationId(conversationId: string): Promise<number> {
+    try {
+      const result = await this.db
+        .delete(planSections)
+        .where(eq(planSections.conversationId, conversationId))
+
+      return result.rowCount ?? 0
+    } catch (error) {
+      throw new DatabaseError('Failed to delete plan sections by conversation', error as Error)
+    }
+  }
+
   private toDomain(row: typeof planSections.$inferSelect): PlanSection {
     return {
       id: row.id,
@@ -91,6 +110,9 @@ export class PlanSectionRepository implements IPlanSectionRepository {
       locked: row.locked,
       timestamp: row.timestamp,
       sourceMessageId: row.sourceMessageId ?? undefined,
+      phaseId: row.phaseId ?? undefined,
+      phaseOrder: row.phaseOrder ?? undefined,
+      structuredData: (row.structuredData as PlanSection['structuredData']) ?? undefined,
     }
   }
 }
