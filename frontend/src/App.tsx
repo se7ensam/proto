@@ -9,12 +9,27 @@ import { AppMenubar } from './components/AppMenubar'
 
 import LoginPage from './components/LoginPage'
 
+const PANEL_WIDTH_STORAGE_KEY = 'chat_panel_width_percent'
+const MIN_CHAT_PANEL_WIDTH = 25
+const MAX_CHAT_PANEL_WIDTH = 75
+
+const clampChatPanelWidth = (value: number) =>
+  Math.min(MAX_CHAT_PANEL_WIDTH, Math.max(MIN_CHAT_PANEL_WIDTH, value))
+
 function App() {
   const [messages, setMessages] = useState<Message[]>([])
   const [planSections, setPlanSections] = useState<PlanSection[]>([])
   const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem('auth_token'))
   const [isGenerating, setIsGenerating] = useState(false)
+  const [chatPanelWidth, setChatPanelWidth] = useState(() => {
+    if (typeof window === 'undefined') return 50
+    const savedWidth = Number(window.localStorage.getItem(PANEL_WIDTH_STORAGE_KEY))
+    if (Number.isNaN(savedWidth)) return 50
+    return clampChatPanelWidth(savedWidth)
+  })
   const abortControllerRef = (useRef<AbortController | null>(null)) as React.MutableRefObject<AbortController | null>
+  const mainContentRef = useRef<HTMLDivElement | null>(null)
+  const isResizingRef = useRef(false)
 
   // Load initial data
   useEffect(() => {
@@ -40,6 +55,38 @@ function App() {
     }
     loadData()
   }, [isAuthenticated]) // Re-run when authentication status changes
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem(PANEL_WIDTH_STORAGE_KEY, chatPanelWidth.toString())
+  }, [chatPanelWidth])
+
+  useEffect(() => {
+    const handleMouseMove = (event: MouseEvent) => {
+      if (!isResizingRef.current || !mainContentRef.current) return
+      const rect = mainContentRef.current.getBoundingClientRect()
+      if (rect.width === 0) return
+      const nextWidth = ((event.clientX - rect.left) / rect.width) * 100
+      setChatPanelWidth(clampChatPanelWidth(nextWidth))
+    }
+
+    const handleMouseUp = () => {
+      if (!isResizingRef.current) return
+      isResizingRef.current = false
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+  }, [])
 
   const handleSendMessage = async (content: string) => {
     let streamingMessageId: string | null = null
@@ -266,6 +313,40 @@ function App() {
     toast.success('Logged out successfully')
   }
 
+  const handleResizeStart = (event: React.MouseEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    isResizingRef.current = true
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+  }
+
+  const handleResizeKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault()
+      setChatPanelWidth((prev) => clampChatPanelWidth(prev - 5))
+      return
+    }
+    if (event.key === 'ArrowRight') {
+      event.preventDefault()
+      setChatPanelWidth((prev) => clampChatPanelWidth(prev + 5))
+      return
+    }
+    if (event.key === 'Home') {
+      event.preventDefault()
+      setChatPanelWidth(MIN_CHAT_PANEL_WIDTH)
+      return
+    }
+    if (event.key === 'End') {
+      event.preventDefault()
+      setChatPanelWidth(MAX_CHAT_PANEL_WIDTH)
+      return
+    }
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      setChatPanelWidth(50)
+    }
+  }
+
   if (!isAuthenticated) {
     return <LoginPage onLoginSuccess={() => setIsAuthenticated(true)} />
   }
@@ -279,9 +360,9 @@ function App() {
       <AppMenubar onLogout={handleLogout} />
       
       {/* Main Content */}
-      <div className="flex flex-1 overflow-hidden">
+      <div ref={mainContentRef} className="flex flex-1 overflow-hidden">
         {/* Chat Panel */}
-        <div className="w-1/2 border-r border-border">
+        <div className="h-full min-w-0 border-r border-border" style={{ width: `${chatPanelWidth}%` }}>
           <ChatPanel
             messages={messages}
             onSendMessage={handleSendMessage}
@@ -291,9 +372,25 @@ function App() {
             onStop={handleStopGeneration}
           />
         </div>
+
+        <div
+          className="group relative z-10 w-2 shrink-0 cursor-col-resize bg-muted/40 hover:bg-muted focus:outline-none focus:ring-2 focus:ring-primary/60"
+          role="separator"
+          tabIndex={0}
+          aria-label="Resize AI chat and plan draft panels"
+          aria-orientation="vertical"
+          aria-valuemin={MIN_CHAT_PANEL_WIDTH}
+          aria-valuemax={MAX_CHAT_PANEL_WIDTH}
+          aria-valuenow={Math.round(chatPanelWidth)}
+          onMouseDown={handleResizeStart}
+          onKeyDown={handleResizeKeyDown}
+          onDoubleClick={() => setChatPanelWidth(50)}
+        >
+          <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border transition-colors group-hover:bg-primary/50" />
+        </div>
         
         {/* Plan Panel */}
-        <div className="w-1/2">
+        <div className="h-full min-w-0 flex-1">
           <PlanDraftPanel
             sections={planSections}
             onLockSection={handleLockSection}
