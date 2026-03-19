@@ -91,7 +91,7 @@ export default function MessageBubble({
             ) : (
               <>
                 {isAI ? (
-                  <TypewriterText content={message.content} isStreaming={true} speed={5} />
+                  <TypewriterText content={message.content} isStreaming={isStreaming} speed={5} />
                 ) : (
                   <TypewriterText content={message.content} isStreaming={false} />
                 )}
