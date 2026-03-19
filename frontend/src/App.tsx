@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { toast } from 'sonner'
+import { PanelRightClose, PanelRightOpen } from 'lucide-react'
 import { Toaster } from '@/components/ui/sonner'
 import ChatPanel from './components/ChatPanel'
 import PlanDraftPanel from './components/PlanDraftPanel'
@@ -13,6 +14,7 @@ import LoginPage from './components/LoginPage'
 const PANEL_WIDTH_STORAGE_KEY = 'chat_panel_width_percent'
 const ACTIVE_CONVERSATION_STORAGE_KEY = 'active_conversation_id'
 const SIDEBAR_COLLAPSED_STORAGE_KEY = 'conversations_sidebar_collapsed'
+const PLAN_PANEL_COLLAPSED_STORAGE_KEY = 'plan_panel_collapsed'
 const MIN_CHAT_PANEL_WIDTH = 25
 const MAX_CHAT_PANEL_WIDTH = 75
 
@@ -56,15 +58,31 @@ function App() {
     if (typeof window === 'undefined') return false
     return window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === '1'
   })
+  const [isPlanPanelCollapsed, setIsPlanPanelCollapsed] = useState(() => {
+    if (typeof window === 'undefined') return false
+    return window.localStorage.getItem(PLAN_PANEL_COLLAPSED_STORAGE_KEY) === '1'
+  })
+  const [isResizing, setIsResizing] = useState(false)
   const [chatPanelWidth, setChatPanelWidth] = useState(() => {
     if (typeof window === 'undefined') return 50
     const savedWidth = Number(window.localStorage.getItem(PANEL_WIDTH_STORAGE_KEY))
     if (Number.isNaN(savedWidth)) return 50
     return clampChatPanelWidth(savedWidth)
   })
+  const [dividerTooltip, setDividerTooltip] = useState<{
+    visible: boolean
+    x: number
+    y: number
+  }>({
+    visible: false,
+    x: 0,
+    y: 0,
+  })
   const abortControllerRef = (useRef<AbortController | null>(null)) as React.MutableRefObject<AbortController | null>
   const mainContentRef = useRef<HTMLDivElement | null>(null)
   const isResizingRef = useRef(false)
+  const resizeAnimationFrameRef = useRef<number | null>(null)
+  const pendingResizeWidthRef = useRef<number | null>(null)
 
   const upsertConversation = (conversation: ConversationSummary) => {
     setConversations((prev) => {
@@ -207,6 +225,11 @@ function App() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return
+    window.localStorage.setItem(PLAN_PANEL_COLLAPSED_STORAGE_KEY, isPlanPanelCollapsed ? '1' : '0')
+  }, [isPlanPanelCollapsed])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
     if (!activeConversationId) {
       window.localStorage.removeItem(ACTIVE_CONVERSATION_STORAGE_KEY)
       return
@@ -220,13 +243,35 @@ function App() {
       if (!isResizingRef.current || !mainContentRef.current) return
       const rect = mainContentRef.current.getBoundingClientRect()
       if (rect.width === 0) return
-      const nextWidth = ((event.clientX - rect.left) / rect.width) * 100
-      setChatPanelWidth(clampChatPanelWidth(nextWidth))
+      const nextWidth = clampChatPanelWidth(((event.clientX - rect.left) / rect.width) * 100)
+      pendingResizeWidthRef.current = nextWidth
+
+      if (resizeAnimationFrameRef.current !== null) {
+        return
+      }
+
+      resizeAnimationFrameRef.current = window.requestAnimationFrame(() => {
+        resizeAnimationFrameRef.current = null
+        if (pendingResizeWidthRef.current !== null) {
+          setChatPanelWidth(pendingResizeWidthRef.current)
+        }
+      })
     }
 
     const handleMouseUp = () => {
       if (!isResizingRef.current) return
       isResizingRef.current = false
+      setIsResizing(false)
+
+      if (resizeAnimationFrameRef.current !== null) {
+        window.cancelAnimationFrame(resizeAnimationFrameRef.current)
+        resizeAnimationFrameRef.current = null
+      }
+      if (pendingResizeWidthRef.current !== null) {
+        setChatPanelWidth(pendingResizeWidthRef.current)
+        pendingResizeWidthRef.current = null
+      }
+
       document.body.style.cursor = ''
       document.body.style.userSelect = ''
     }
@@ -237,6 +282,10 @@ function App() {
     return () => {
       window.removeEventListener('mousemove', handleMouseMove)
       window.removeEventListener('mouseup', handleMouseUp)
+      if (resizeAnimationFrameRef.current !== null) {
+        window.cancelAnimationFrame(resizeAnimationFrameRef.current)
+        resizeAnimationFrameRef.current = null
+      }
       document.body.style.cursor = ''
       document.body.style.userSelect = ''
     }
@@ -716,13 +765,36 @@ function App() {
   }
 
   const handleResizeStart = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (isPlanPanelCollapsed) {
+      return
+    }
     event.preventDefault()
     isResizingRef.current = true
+    setIsResizing(true)
+    setDividerTooltip((prev) => (prev.visible ? { ...prev, visible: false } : prev))
     document.body.style.cursor = 'col-resize'
     document.body.style.userSelect = 'none'
   }
 
+  const handleDividerMouseMove = (event: React.MouseEvent<HTMLDivElement>) => {
+    if ((event.target as HTMLElement).closest('[data-divider-collapse-button="true"]')) {
+      if (dividerTooltip.visible) {
+        setDividerTooltip((prev) => ({ ...prev, visible: false }))
+      }
+      return
+    }
+
+    setDividerTooltip({
+      visible: true,
+      x: event.clientX,
+      y: event.clientY,
+    })
+  }
+
   const handleResizeKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (isPlanPanelCollapsed) {
+      return
+    }
     if (event.key === 'ArrowLeft') {
       event.preventDefault()
       setChatPanelWidth((prev) => clampChatPanelWidth(prev - 5))
@@ -756,6 +828,7 @@ function App() {
   const canCreateConversation =
     !activeConversationId || messages.length > 0 || planSections.length > 0
   const canDeleteConversation = Boolean(activeConversationId)
+  const effectiveChatPanelWidth = isPlanPanelCollapsed ? null : chatPanelWidth
 
   return (
     <div className="flex flex-col h-screen bg-background">
@@ -771,11 +844,13 @@ function App() {
             handleDeleteConversation(activeConversationId)
           }
         }}
+        onTogglePlanPanel={() => setIsPlanPanelCollapsed((prev) => !prev)}
         onSelectConversation={handleSelectConversation}
         conversations={conversations}
         activeConversationId={activeConversationId}
         canCreateConversation={canCreateConversation}
         canDeleteConversation={canDeleteConversation}
+        isPlanPanelCollapsed={isPlanPanelCollapsed}
       />
       
       {/* Main Content */}
@@ -797,9 +872,14 @@ function App() {
           isRestoringDeletedConversations={isRestoringDeletedConversations}
         />
 
-        <div ref={mainContentRef} className="flex min-w-0 flex-1 overflow-hidden">
+        <div ref={mainContentRef} className="relative flex min-w-0 flex-1 overflow-hidden">
           {/* Chat Panel */}
-          <div className="h-full min-w-0 border-r border-border" style={{ width: `${chatPanelWidth}%` }}>
+          <div
+            className={`h-full min-w-0 ${
+              isResizing ? '' : 'transition-[width] duration-150 ease-out'
+            } ${isPlanPanelCollapsed ? 'flex-1' : 'border-r border-border'}`}
+            style={effectiveChatPanelWidth === null ? undefined : { width: `${effectiveChatPanelWidth}%` }}
+          >
             <ChatPanel
               messages={messages}
               onSendMessage={handleSendMessage}
@@ -810,30 +890,86 @@ function App() {
             />
           </div>
 
-          <div
-            className="group relative z-10 w-2 shrink-0 cursor-col-resize bg-muted/40 hover:bg-muted focus:outline-none focus:ring-2 focus:ring-primary/60"
-            role="separator"
-            tabIndex={0}
-            aria-label="Resize AI chat and plan draft panels"
-            aria-orientation="vertical"
-            aria-valuemin={MIN_CHAT_PANEL_WIDTH}
-            aria-valuemax={MAX_CHAT_PANEL_WIDTH}
-            aria-valuenow={Math.round(chatPanelWidth)}
-            onMouseDown={handleResizeStart}
-            onKeyDown={handleResizeKeyDown}
-            onDoubleClick={() => setChatPanelWidth(50)}
-          >
-            <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border transition-colors group-hover:bg-primary/50" />
-          </div>
-          
-          {/* Plan Panel */}
-          <div className="h-full min-w-0 flex-1">
-            <PlanDraftPanel
-              sections={planSections}
-              onLockSection={handleLockSection}
-              conversationId={activeConversationId || 'default'}
-            />
-          </div>
+          {!isPlanPanelCollapsed && (
+            <>
+              <div
+                className="group relative z-10 w-2 shrink-0 cursor-col-resize bg-muted/40 hover:bg-muted focus:outline-none focus:ring-2 focus:ring-primary/60"
+                role="separator"
+                tabIndex={0}
+                aria-label="Resize AI chat and plan draft panels"
+                aria-orientation="vertical"
+                aria-valuemin={MIN_CHAT_PANEL_WIDTH}
+                aria-valuemax={MAX_CHAT_PANEL_WIDTH}
+                aria-valuenow={Math.round(chatPanelWidth)}
+                onMouseDown={handleResizeStart}
+                onMouseEnter={handleDividerMouseMove}
+                onMouseMove={handleDividerMouseMove}
+                onMouseLeave={() =>
+                  setDividerTooltip((prev) => (prev.visible ? { ...prev, visible: false } : prev))
+                }
+                onKeyDown={handleResizeKeyDown}
+                onDoubleClick={() => setChatPanelWidth(50)}
+              >
+                <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border transition-colors group-hover:bg-primary/50" />
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    setIsPlanPanelCollapsed(true)
+                  }}
+                  onMouseEnter={() =>
+                    setDividerTooltip((prev) => (prev.visible ? { ...prev, visible: false } : prev))
+                  }
+                  data-divider-collapse-button="true"
+                  className="group/collapse absolute left-1/2 top-1/2 z-20 flex h-10 w-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-border/70 bg-background/90 text-muted-foreground shadow-sm backdrop-blur transition-all duration-150 hover:border-primary/40 hover:bg-accent/70 hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                  aria-label="Collapse plan pane"
+                  title="Collapse plan pane"
+                >
+                  <PanelRightClose className="h-4 w-4" />
+                  <span className="pointer-events-none absolute -left-2 top-1/2 -translate-x-full -translate-y-1/2 whitespace-nowrap rounded-md border border-border bg-popover px-2 py-1 text-[10px] font-medium text-popover-foreground opacity-0 shadow-sm transition-opacity duration-150 group-hover/collapse:opacity-100">
+                    Collapse Plan
+                  </span>
+                </button>
+              </div>
+
+              {/* Plan Panel */}
+              <div className="h-full min-w-0 flex-1">
+                <PlanDraftPanel
+                  sections={planSections}
+                  onLockSection={handleLockSection}
+                  conversationId={activeConversationId || 'default'}
+                />
+              </div>
+            </>
+          )}
+
+          {isPlanPanelCollapsed && (
+            <button
+              type="button"
+              onClick={() => setIsPlanPanelCollapsed(false)}
+              className="group absolute right-2 top-1/2 z-20 flex h-10 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-border/70 bg-background/90 text-muted-foreground shadow-sm backdrop-blur transition-all duration-150 hover:border-primary/40 hover:bg-accent/70 hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              aria-label="Expand plan pane"
+              title="Expand plan pane"
+            >
+              <PanelRightOpen className="h-4 w-4" />
+              <span className="pointer-events-none absolute -left-2 top-1/2 -translate-x-full -translate-y-1/2 whitespace-nowrap rounded-md border border-border bg-popover px-2 py-1 text-[10px] font-medium text-popover-foreground opacity-0 shadow-sm transition-opacity duration-150 group-hover:opacity-100">
+                Expand Plan
+              </span>
+            </button>
+          )}
+
+          {dividerTooltip.visible && (
+            <span
+              className="pointer-events-none fixed z-40 whitespace-nowrap rounded-md border border-border bg-popover px-2 py-1 text-[10px] font-medium text-popover-foreground shadow-sm"
+              style={{
+                left: dividerTooltip.x,
+                top: dividerTooltip.y + 14,
+                transform: 'translateX(-50%)',
+              }}
+            >
+              Resize panes
+            </span>
+          )}
         </div>
       </div>
     </div>

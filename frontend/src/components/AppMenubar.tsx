@@ -17,22 +17,26 @@ interface AppMenubarProps {
   onLogout: () => void
   onNewConversation: () => void
   onDeleteConversation: () => void
+  onTogglePlanPanel: () => void
   onSelectConversation: (conversationId: string) => void
   conversations: ConversationSummary[]
   activeConversationId: string | null
   canCreateConversation: boolean
   canDeleteConversation: boolean
+  isPlanPanelCollapsed: boolean
 }
 
 export function AppMenubar({
   onLogout,
   onNewConversation,
   onDeleteConversation,
+  onTogglePlanPanel,
   onSelectConversation,
   conversations,
   activeConversationId,
   canCreateConversation,
   canDeleteConversation,
+  isPlanPanelCollapsed,
 }: AppMenubarProps) {
   const { setTheme } = useTheme()
   const recentConversations = conversations.slice(0, 12)
@@ -104,6 +108,10 @@ export function AppMenubar({
           <MenubarMenu>
             <MenubarTrigger>View</MenubarTrigger>
             <MenubarContent>
+              <MenubarItem onClick={onTogglePlanPanel}>
+                {isPlanPanelCollapsed ? 'Show Plan Pane' : 'Hide Plan Pane'}
+              </MenubarItem>
+              <MenubarSeparator />
               <MenubarItem onClick={() => setTheme("light")}>
                 <Sun className="mr-2 h-4 w-4" />
                 Light Mode
