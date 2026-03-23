@@ -7,6 +7,9 @@ export interface Message {
   content: string
   timestamp: Date
   isStreaming?: boolean
+  conversationId?: string
+  userId?: string
+  userEmail?: string
 }
 
 export interface ConversationSummary {
