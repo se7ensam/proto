@@ -3,7 +3,13 @@
  * Framework-agnostic, testable, deterministic where possible
  */
 
-import { IMessageRepository, IConversationRepository, IPlanningRulesRepository, IPlanSectionRepository } from '../repositories'
+import {
+  IMessageRepository,
+  IConversationRepository,
+  IPlanningRulesRepository,
+  IPlanSectionRepository,
+  IUserRepository,
+} from '../repositories'
 import { Message, ConversationContext, LLMRequest, Conversation } from '../types'
 import { NotFoundError, ValidationError } from '../errors'
 import { parsePlanPayload, renderPlanPayloadForUser } from './plan-json'
@@ -20,7 +26,8 @@ export class ChatService {
     private conversationRepo: IConversationRepository,
     private planningRulesRepo: IPlanningRulesRepository,
     private planSectionRepo: IPlanSectionRepository,
-    private llmService: ILLMService
+    private llmService: ILLMService,
+    private userRepo?: IUserRepository
   ) {}
 
   /**
@@ -346,6 +353,45 @@ export class ChatService {
     if (!removed) {
       throw new NotFoundError('Member', memberId)
     }
+  }
+
+  /**
+   * Get member list with emails for a conversation.
+   */
+  async getConversationMembers(
+    userId: string,
+    conversationId: string
+  ): Promise<Array<{ userId: string; email: string; role: 'host' | 'member' }>> {
+    const conversation = await this.conversationRepo.getOrCreate(userId, conversationId)
+    const members = await this.conversationRepo.getMembers(conversation.id)
+
+    const memberRows: Array<{ userId: string; role: 'host' | 'member' }> = [
+      { userId: conversation.userId, role: 'host' },
+      ...members.map((member) => ({ userId: member.userId, role: 'member' as const })),
+    ]
+
+    const deduped = Array.from(new Map(memberRows.map((row) => [row.userId, row])).values())
+
+    if (!this.userRepo) {
+      return deduped.map((row) => ({
+        userId: row.userId,
+        email: '',
+        role: row.role,
+      }))
+    }
+
+    const hydrated = await Promise.all(
+      deduped.map(async (row) => {
+        const user = await this.userRepo!.findById(row.userId)
+        return {
+          userId: row.userId,
+          email: user?.email ?? '',
+          role: row.role,
+        }
+      })
+    )
+
+    return hydrated.filter((row) => row.email)
   }
 
   /**

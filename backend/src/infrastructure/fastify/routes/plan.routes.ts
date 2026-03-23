@@ -52,6 +52,32 @@ const planRoutes: FastifyPluginAsync = async (fastify) => {
 
   // Get plan sections
   fastify.get(
+    '/calendar/:conversationId.ics',
+    {
+      onRequest: [fastify.authenticate],
+    },
+    async (request, reply) => {
+      const params = z
+        .object({
+          conversationId: z.string().min(1),
+        })
+        .parse(request.params)
+
+      const userId = request.userId!
+      const ics = await fastify.services.plan.exportCalendarIcs(userId, params.conversationId)
+
+      reply.header('Content-Type', 'text/calendar; charset=utf-8')
+      reply.header(
+        'Content-Disposition',
+        `attachment; filename="plan-${params.conversationId.slice(0, 8)}.ics"`
+      )
+
+      return reply.send(ics)
+    }
+  )
+
+  // Get plan sections
+  fastify.get(
     '/sections/:conversationId',
     {
       onRequest: [fastify.authenticate],
