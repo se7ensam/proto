@@ -42,6 +42,12 @@ export interface UpdateConversationTitleResponse {
   conversation: ConversationSummary
 }
 
+export interface ConversationMemberResponse {
+  userId: string
+  email: string
+  role: 'host' | 'member'
+}
+
 class ApiService {
   private conversationId: string = 'default'
   private token: string | null = localStorage.getItem('auth_token')
@@ -62,6 +68,26 @@ class ApiService {
   logout() {
     this.token = null
     localStorage.removeItem('auth_token')
+  }
+
+  get userId(): string | null {
+    if (!this.token) return null
+    try {
+      const payload = JSON.parse(atob(this.token.split('.')[1]))
+      return payload.userId || payload.sub || payload.id || null
+    } catch {
+      return null
+    }
+  }
+
+  get userEmail(): string | null {
+    if (!this.token) return null
+    try {
+      const payload = JSON.parse(atob(this.token.split('.')[1]))
+      return payload.email || null
+    } catch {
+      return null
+    }
   }
 
   private getHeaders(): any {
@@ -457,6 +483,76 @@ class ApiService {
     return {
       sections: data.sections.map((section: any) => this.normalizePlanSection(section)),
     }
+  }
+
+  async downloadPlanCalendar(conversationId: string): Promise<Blob> {
+    const response = await fetch(`${API_BASE}/plan/calendar/${encodeURIComponent(conversationId)}.ics`, {
+      headers: this.getHeaders(),
+    })
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        throw new Error('Unauthorized: Please login again')
+      }
+      throw new Error('Failed to export plan calendar')
+    }
+
+    return response.blob()
+  }
+
+  // ==================== Members Integration ====================
+
+  async searchUsers(query: string): Promise<{ users: {id: string, email: string}[] }> {
+    const response = await fetch(`${API_BASE}/users/search?q=${encodeURIComponent(query)}`, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to search users')
+    }
+
+    return response.json()
+  }
+
+  async addMember(userId: string): Promise<{ success: boolean }> {
+    const response = await fetch(`${API_BASE}/chat/${this.conversationId}/members`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({ userId }),
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to add member')
+    }
+
+    return response.json()
+  }
+
+  async removeMember(userId: string): Promise<{ success: boolean }> {
+    const response = await fetch(`${API_BASE}/chat/${this.conversationId}/members/${userId}`, {
+      method: 'DELETE',
+      headers: this.getHeaders(),
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to remove member')
+    }
+
+    return response.json()
+  }
+
+  async getConversationMembers(conversationId: string): Promise<{ members: ConversationMemberResponse[] }> {
+    const response = await fetch(`${API_BASE}/chat/${conversationId}/members`, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch conversation members')
+    }
+
+    return response.json()
   }
 
   async lockSection(sectionId: string, locked: boolean): Promise<{

@@ -285,6 +285,23 @@ const chatRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.send({ success: true })
     }
   )
+
+  // List chat members (host + invited members)
+  fastify.get(
+    '/:conversationId/members',
+    {
+      onRequest: [fastify.authenticate],
+    },
+    async (request, reply) => {
+      const params = z.object({
+        conversationId: z.string(),
+      }).parse(request.params)
+
+      const userId = request.userId!
+      const members = await fastify.services.chat.getConversationMembers(userId, params.conversationId)
+      return reply.send({ members })
+    }
+  )
 }
 
 export default chatRoutes

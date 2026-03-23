@@ -94,7 +94,8 @@ const servicesPlugin: FastifyPluginAsync = async (fastify) => {
     conversationRepo,
     planningRulesRepo,
     planSectionRepo,
-    llmService
+    llmService,
+    userRepo
   )
   const planService = new PlanService(planSectionRepo, messageRepo, conversationRepo)
   const authService = new AuthService(userRepo, tokenService, googleAuthService)

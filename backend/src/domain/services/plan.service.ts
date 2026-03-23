@@ -206,6 +206,57 @@ export class PlanService {
     await this.planSectionRepo.delete(sectionId)
   }
 
+  /**
+   * Export plan sections as an iCalendar (.ics) document.
+   * Each phase/section is scheduled as an all-day event in sequence.
+   */
+  async exportCalendarIcs(userId: string, conversationId: string): Promise<string> {
+    const conversation = await this.conversationRepo.getOrCreate(userId, conversationId)
+    const sections = await this.planSectionRepo.findByConversationId(conversation.id)
+
+    const orderedSections = [...sections].sort((a, b) => {
+      if (typeof a.phaseOrder === 'number' && typeof b.phaseOrder === 'number') {
+        return a.phaseOrder - b.phaseOrder
+      }
+      return a.timestamp.getTime() - b.timestamp.getTime()
+    })
+
+    const lines: string[] = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//Proto//Plan Calendar//EN',
+      'CALSCALE:GREGORIAN',
+      'METHOD:PUBLISH',
+      `X-WR-CALNAME:${this.escapeIcsText(`Plan ${conversation.id.slice(0, 8)}`)}`,
+    ]
+
+    const todayUtc = new Date()
+    const dateSeed = new Date(Date.UTC(todayUtc.getUTCFullYear(), todayUtc.getUTCMonth(), todayUtc.getUTCDate()))
+    const dtStamp = this.formatUtcDateTime(new Date())
+
+    orderedSections.forEach((section, index) => {
+      const start = new Date(dateSeed)
+      start.setUTCDate(dateSeed.getUTCDate() + index)
+      const end = new Date(start)
+      end.setUTCDate(start.getUTCDate() + 1)
+
+      const title = section.structuredData?.n || this.getSectionTitle(section.content)
+      const description = this.getSectionDescription(section)
+
+      lines.push('BEGIN:VEVENT')
+      lines.push(`UID:${this.escapeIcsText(`${conversation.id}-${section.id}@proto`)}`)
+      lines.push(`DTSTAMP:${dtStamp}`)
+      lines.push(`DTSTART;VALUE=DATE:${this.formatDateOnly(start)}`)
+      lines.push(`DTEND;VALUE=DATE:${this.formatDateOnly(end)}`)
+      lines.push(`SUMMARY:${this.escapeIcsText(title)}`)
+      lines.push(`DESCRIPTION:${this.escapeIcsText(description)}`)
+      lines.push('END:VEVENT')
+    })
+
+    lines.push('END:VCALENDAR')
+    return `${lines.join('\r\n')}\r\n`
+  }
+
   private async applyPlanDoc(
     userId: string,
     messageId: string,
@@ -334,5 +385,45 @@ export class PlanService {
     }
 
     return parsePlanPayloadFromUnknown(metadata.planPayload)
+  }
+
+  private getSectionTitle(content: string): string {
+    const firstLine = content.split('\n').map((line) => line.trim()).find(Boolean)
+    return firstLine || 'Plan item'
+  }
+
+  private getSectionDescription(section: PlanSection): string {
+    if (section.structuredData) {
+      const tasks = section.structuredData.it.map((task) => `- ${task.c}`).join('\n')
+      return tasks
+        ? `${section.structuredData.sum}\n${tasks}`
+        : section.structuredData.sum
+    }
+    return section.content
+  }
+
+  private escapeIcsText(value: string): string {
+    return value
+      .replace(/\\/g, '\\\\')
+      .replace(/\r?\n/g, '\\n')
+      .replace(/,/g, '\\,')
+      .replace(/;/g, '\\;')
+  }
+
+  private formatDateOnly(value: Date): string {
+    const yyyy = value.getUTCFullYear().toString().padStart(4, '0')
+    const mm = (value.getUTCMonth() + 1).toString().padStart(2, '0')
+    const dd = value.getUTCDate().toString().padStart(2, '0')
+    return `${yyyy}${mm}${dd}`
+  }
+
+  private formatUtcDateTime(value: Date): string {
+    const yyyy = value.getUTCFullYear().toString().padStart(4, '0')
+    const mm = (value.getUTCMonth() + 1).toString().padStart(2, '0')
+    const dd = value.getUTCDate().toString().padStart(2, '0')
+    const hh = value.getUTCHours().toString().padStart(2, '0')
+    const min = value.getUTCMinutes().toString().padStart(2, '0')
+    const sec = value.getUTCSeconds().toString().padStart(2, '0')
+    return `${yyyy}${mm}${dd}T${hh}${min}${sec}Z`
   }
 }

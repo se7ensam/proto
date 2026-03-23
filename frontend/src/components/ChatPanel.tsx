@@ -3,6 +3,7 @@ import MessageInput from './MessageInput'
 import { Message } from '../types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { MessageSquare } from 'lucide-react'
+import ShareChatModal from './ShareChatModal'
 
 interface ChatPanelProps {
   messages: Message[]
@@ -23,11 +24,12 @@ export default function ChatPanel({
 }: ChatPanelProps) {
   return (
     <Card className="flex flex-col h-full rounded-none border-0 border-r">
-      <CardHeader className="border-b bg-muted/50 py-4">
+      <CardHeader className="border-b bg-muted/50 py-4 flex flex-row items-center justify-between">
         <CardTitle className="flex items-center gap-2 text-xl font-semibold text-foreground">
           <MessageSquare className="h-5 w-5 text-primary" />
           AI Chat
         </CardTitle>
+        <ShareChatModal />
       </CardHeader>
       <CardContent className="flex-1 overflow-hidden p-0 flex flex-col">
         <div className="flex-1 overflow-hidden">

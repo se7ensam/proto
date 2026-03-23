@@ -117,9 +117,8 @@ function App() {
 
   // Load conversation list
   useEffect(() => {
-    if (!isAuthenticated) return // Don't load data if not authenticated
-    
     const loadConversations = async () => {
+      if (!isAuthenticated) return
       try {
         const listRes = await apiService.getConversations()
 
