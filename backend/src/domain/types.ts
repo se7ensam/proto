@@ -5,6 +5,9 @@
 export type MessageType = 'user' | 'ai' | 'system' | 'plan_update'
 export type PlanStatus = 'td' | 'ip' | 'dn' | 'bl'
 
+/** Per–plan-section calendar sync outcome (distinct from phase task PlanStatus). */
+export type PlanCalendarEventStatus = 'created' | 'failed'
+
 export interface Message {
   id: string
   conversationId: string
@@ -27,6 +30,7 @@ export interface PlanSection {
   phaseId?: string
   phaseOrder?: number
   structuredData?: PlanPhase
+  calendarEventStatus?: PlanCalendarEventStatus
 }
 
 export interface PlanTask {

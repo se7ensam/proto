@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm'
 import { NodePgDatabase } from 'drizzle-orm/node-postgres'
-import { IPlanSectionRepository } from '../../domain/repositories'
+import { IPlanSectionRepository, PlanSectionPatch } from '../../domain/repositories'
 import { PlanSection } from '../../domain/types'
 import { planSections } from '../../db/schema'
 import { DatabaseError } from '../../domain/errors'
@@ -22,6 +22,7 @@ export class PlanSectionRepository implements IPlanSectionRepository {
           phaseId: section.phaseId,
           phaseOrder: section.phaseOrder,
           structuredData: section.structuredData as any,
+          calendarEventStatus: section.calendarEventStatus ?? null,
         })
         .returning()
 
@@ -59,18 +60,22 @@ export class PlanSectionRepository implements IPlanSectionRepository {
     }
   }
 
-  async update(id: string, updates: Partial<PlanSection>): Promise<PlanSection | null> {
+  async update(id: string, updates: PlanSectionPatch): Promise<PlanSection | null> {
     try {
+      const setValues: Partial<typeof planSections.$inferInsert> = {}
+      if (updates.content !== undefined) setValues.content = updates.content
+      if (updates.locked !== undefined) setValues.locked = updates.locked
+      if (updates.sourceMessageId !== undefined) setValues.sourceMessageId = updates.sourceMessageId
+      if (updates.phaseId !== undefined) setValues.phaseId = updates.phaseId
+      if (updates.phaseOrder !== undefined) setValues.phaseOrder = updates.phaseOrder
+      if (updates.structuredData !== undefined) setValues.structuredData = updates.structuredData as any
+      if (updates.calendarEventStatus !== undefined) {
+        setValues.calendarEventStatus = updates.calendarEventStatus
+      }
+
       const [updated] = await this.db
         .update(planSections)
-        .set({
-          content: updates.content,
-          locked: updates.locked,
-          sourceMessageId: updates.sourceMessageId,
-          phaseId: updates.phaseId,
-          phaseOrder: updates.phaseOrder,
-          structuredData: updates.structuredData as any,
-        })
+        .set(setValues)
         .where(eq(planSections.id, id))
         .returning()
 
@@ -113,6 +118,7 @@ export class PlanSectionRepository implements IPlanSectionRepository {
       phaseId: row.phaseId ?? undefined,
       phaseOrder: row.phaseOrder ?? undefined,
       structuredData: (row.structuredData as PlanSection['structuredData']) ?? undefined,
+      calendarEventStatus: (row.calendarEventStatus as PlanSection['calendarEventStatus']) ?? undefined,
     }
   }
 }

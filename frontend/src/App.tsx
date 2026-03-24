@@ -937,6 +937,23 @@ function App() {
                   sections={planSections}
                   onLockSection={handleLockSection}
                   conversationId={activeConversationId || 'default'}
+                  calendarEventsCreated={
+                    conversations.find((c) => c.id === activeConversationId)?.calendarEventsCreated ?? false
+                  }
+                  onCalendarSynced={() => {
+                    if (activeConversationId) {
+                      void syncConversationSummaryFromServer(activeConversationId)
+                      void (async () => {
+                        try {
+                          apiService.setConversationId(activeConversationId)
+                          const { sections } = await apiService.getPlanSections()
+                          setPlanSections(sections)
+                        } catch {
+                          /* ignore */
+                        }
+                      })()
+                    }
+                  }}
                 />
               </div>
             </>

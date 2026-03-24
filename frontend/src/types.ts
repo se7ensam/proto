@@ -1,5 +1,6 @@
 export type MessageType = 'user' | 'ai' | 'assistant' | 'system' | 'plan_update'
 export type PlanStatus = 'td' | 'ip' | 'dn' | 'bl'
+export type PlanCalendarEventStatus = 'created' | 'failed'
 
 export interface Message {
   id: string
@@ -19,6 +20,8 @@ export interface ConversationSummary {
   title?: string
   isEmpty?: boolean
   deletedAt?: Date
+  /** True once plan has been exported to calendar (Google/ICS) for this chat */
+  calendarEventsCreated?: boolean
   metadata?: Record<string, unknown>
 }
 
@@ -31,6 +34,8 @@ export interface PlanSection {
   phaseId?: string
   phaseOrder?: number
   structuredData?: PlanPhase
+  /** Set after a calendar event is created for this section (server-persisted). */
+  calendarEventStatus?: PlanCalendarEventStatus
   sourceMessage?: {
     id: string
     content: string

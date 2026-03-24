@@ -4,7 +4,13 @@
  */
 
 import { IPlanSectionRepository, IMessageRepository, IConversationRepository } from '../repositories'
-import { PlanSection, Message, PlanDoc, PlanDeltaPhaseReplace } from '../types'
+import {
+  PlanSection,
+  Message,
+  PlanDoc,
+  PlanDeltaPhaseReplace,
+  PlanCalendarEventStatus,
+} from '../types'
 import { NotFoundError, ValidationError } from '../errors'
 import { isPlanDoc, parsePlanPayload, parsePlanPayloadFromUnknown, renderPlanPhaseContent } from './plan-json'
 
@@ -154,8 +160,14 @@ export class PlanService {
     userId: string,
     conversationId: string,
     sectionId: string,
-    updates: { content?: string; locked?: boolean }
+    updates: {
+      content?: string
+      locked?: boolean
+      calendarEventStatus?: PlanCalendarEventStatus | null
+    }
   ): Promise<PlanSection> {
+    const conversation = await this.conversationRepo.getOrCreate(userId, conversationId)
+
     // Verify section exists and belongs to user
     const section = await this.planSectionRepo.findById(sectionId)
     if (!section) {
@@ -164,6 +176,10 @@ export class PlanService {
 
     if (section.userId !== userId) {
       throw new ValidationError('Plan section does not belong to user')
+    }
+
+    if (section.conversationId !== conversation.id) {
+      throw new ValidationError('Plan section does not belong to this conversation')
     }
 
     // Update section

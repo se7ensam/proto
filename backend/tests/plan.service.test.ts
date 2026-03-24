@@ -279,6 +279,10 @@ describe('PlanService', () => {
   })
 
   describe('updatePlanSection', () => {
+    beforeEach(() => {
+      vi.mocked(mockConversationRepo.getOrCreate).mockResolvedValue(createTestConversation({ id: 'conv-1' }))
+    })
+
     it('should update plan section', async () => {
       const userId = 'user-1'
       const conversationId = 'conv-1'
@@ -294,6 +298,26 @@ describe('PlanService', () => {
       const result = await planService.updatePlanSection(userId, conversationId, sectionId, updates)
 
       expect(result).toEqual(updatedSection)
+    })
+
+    it('should update calendar event status', async () => {
+      const userId = 'user-1'
+      const conversationId = 'conv-1'
+      const sectionId = 'section-1'
+      const calendarEventStatus = 'created' as const
+
+      const section = createTestPlanSection({ id: sectionId, userId, conversationId })
+      const updatedSection = createTestPlanSection({ ...section, calendarEventStatus })
+
+      vi.mocked(mockPlanSectionRepo.findById).mockResolvedValue(section)
+      vi.mocked(mockPlanSectionRepo.update).mockResolvedValue(updatedSection)
+
+      const result = await planService.updatePlanSection(userId, conversationId, sectionId, {
+        calendarEventStatus,
+      })
+
+      expect(result.calendarEventStatus).toBe('created')
+      expect(mockPlanSectionRepo.update).toHaveBeenCalledWith(sectionId, { calendarEventStatus })
     })
 
     it('should throw NotFoundError for non-existent section', async () => {
@@ -312,9 +336,23 @@ describe('PlanService', () => {
         planService.updatePlanSection('user-1', 'conv-1', 'section-1', {})
       ).rejects.toThrow(ValidationError)
     })
+
+    it('should throw ValidationError when section does not belong to the conversation', async () => {
+      vi.mocked(mockConversationRepo.getOrCreate).mockResolvedValue(createTestConversation({ id: 'conv-other' }))
+      const section = createTestPlanSection({ userId: 'user-1', conversationId: 'conv-1' })
+      vi.mocked(mockPlanSectionRepo.findById).mockResolvedValue(section)
+
+      await expect(
+        planService.updatePlanSection('user-1', 'conv-other', 'section-1', {})
+      ).rejects.toThrow(ValidationError)
+    })
   })
 
   describe('toggleSectionLock', () => {
+    beforeEach(() => {
+      vi.mocked(mockConversationRepo.getOrCreate).mockResolvedValue(createTestConversation({ id: 'conv-1' }))
+    })
+
     it('should lock a section', async () => {
       const userId = 'user-1'
       const conversationId = 'conv-1'

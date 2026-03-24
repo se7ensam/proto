@@ -9,12 +9,16 @@ interface PlanDraftPanelProps {
   sections: PlanSection[]
   onLockSection: (sectionId: string) => void
   conversationId?: string
+  calendarEventsCreated?: boolean
+  onCalendarSynced?: () => void
 }
 
 export default function PlanDraftPanel({
   sections,
   onLockSection,
   conversationId = 'default',
+  calendarEventsCreated = false,
+  onCalendarSynced,
 }: PlanDraftPanelProps) {
   return (
     <Card className="flex flex-col h-full rounded-none border-0">
@@ -30,7 +34,12 @@ export default function PlanDraftPanel({
               Live updates from applied AI suggestions
             </CardDescription>
           </div>
-          <CalendarSyncModal conversationId={conversationId} sections={sections} />
+          <CalendarSyncModal
+            conversationId={conversationId}
+            sections={sections}
+            calendarEventsCreated={calendarEventsCreated}
+            onCalendarSynced={onCalendarSynced}
+          />
         </div>
       </CardHeader>
       <CardContent className="flex-1 overflow-y-auto p-4">

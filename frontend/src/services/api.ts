@@ -1,4 +1,9 @@
-import { ConversationSummary, Message, PlanSection } from '../types'
+import {
+  ConversationSummary,
+  Message,
+  PlanCalendarEventStatus,
+  PlanSection,
+} from '../types'
 
 const API_BASE = '/api'
 
@@ -51,6 +56,7 @@ export interface ConversationMemberResponse {
 class ApiService {
   private conversationId: string = 'default'
   private token: string | null = localStorage.getItem('auth_token')
+  private tokenClaimsCache: { token: string; payload: Record<string, unknown> } | null = null
 
   constructor() {
     // No-op
@@ -62,32 +68,42 @@ class ApiService {
 
   setToken(token: string) {
     this.token = token
+    this.tokenClaimsCache = null
     localStorage.setItem('auth_token', token)
   }
 
   logout() {
     this.token = null
+    this.tokenClaimsCache = null
     localStorage.removeItem('auth_token')
   }
 
-  get userId(): string | null {
+  private getTokenPayload(): Record<string, unknown> | null {
     if (!this.token) return null
+    if (this.tokenClaimsCache?.token === this.token) {
+      return this.tokenClaimsCache.payload
+    }
     try {
-      const payload = JSON.parse(atob(this.token.split('.')[1]))
-      return payload.userId || payload.sub || payload.id || null
+      const payload = JSON.parse(atob(this.token.split('.')[1])) as Record<string, unknown>
+      this.tokenClaimsCache = { token: this.token, payload }
+      return payload
     } catch {
       return null
     }
   }
 
+  get userId(): string | null {
+    const payload = this.getTokenPayload()
+    if (!payload) return null
+    const raw = payload.userId ?? payload.sub ?? payload.id
+    return typeof raw === 'string' ? raw : null
+  }
+
   get userEmail(): string | null {
-    if (!this.token) return null
-    try {
-      const payload = JSON.parse(atob(this.token.split('.')[1]))
-      return payload.email || null
-    } catch {
-      return null
-    }
+    const payload = this.getTokenPayload()
+    if (!payload) return null
+    const raw = payload.email
+    return typeof raw === 'string' ? raw : null
   }
 
   private getHeaders(): any {
@@ -126,6 +142,13 @@ class ApiService {
           ? metadata.deletedAt
           : undefined
 
+    const calendarEventsCreated =
+      typeof metadata?.calendarEventsCreated === 'boolean'
+        ? metadata.calendarEventsCreated
+        : typeof conversation.calendarEventsCreated === 'boolean'
+          ? conversation.calendarEventsCreated
+          : false
+
     return {
       ...conversation,
       createdAt: new Date(conversation.createdAt),
@@ -133,6 +156,7 @@ class ApiService {
       title,
       deletedAt: deletedAt ? new Date(deletedAt) : undefined,
       isEmpty: Boolean(conversation.isEmpty),
+      calendarEventsCreated,
     }
   }
 
@@ -414,6 +438,30 @@ class ApiService {
     }
   }
 
+  async setConversationCalendarEventsCreated(
+    conversationId: string,
+    calendarEventsCreated: boolean
+  ): Promise<UpdateConversationTitleResponse> {
+    const response = await fetch(`${API_BASE}/chat/conversations/${conversationId}/calendar`, {
+      method: 'PATCH',
+      headers: this.getHeaders(),
+      body: JSON.stringify({ calendarEventsCreated }),
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(
+        (errorData as { error?: { message?: string } }).error?.message ||
+          'Failed to update calendar sync status'
+      )
+    }
+
+    const data = await response.json()
+    return {
+      conversation: this.normalizeConversation(data.conversation),
+    }
+  }
+
   async updateConversationTitle(
     conversationId: string,
     title: string
@@ -485,21 +533,6 @@ class ApiService {
     }
   }
 
-  async downloadPlanCalendar(conversationId: string): Promise<Blob> {
-    const response = await fetch(`${API_BASE}/plan/calendar/${encodeURIComponent(conversationId)}.ics`, {
-      headers: this.getHeaders(),
-    })
-
-    if (!response.ok) {
-      if (response.status === 401) {
-        throw new Error('Unauthorized: Please login again')
-      }
-      throw new Error('Failed to export plan calendar')
-    }
-
-    return response.blob()
-  }
-
   // ==================== Members Integration ====================
 
   async searchUsers(query: string): Promise<{ users: {id: string, email: string}[] }> {
@@ -553,6 +586,45 @@ class ApiService {
     }
 
     return response.json()
+  }
+
+  async updatePlanSection(
+    conversationId: string,
+    sectionId: string,
+    updates: {
+      content?: string
+      locked?: boolean
+      calendarEventStatus?: PlanCalendarEventStatus | null
+    }
+  ): Promise<{ section: PlanSection }> {
+    const body: Record<string, unknown> = { sectionId }
+    if (updates.content !== undefined) body.content = updates.content
+    if (updates.locked !== undefined) body.locked = updates.locked
+    if (updates.calendarEventStatus !== undefined) {
+      body.calendarEventStatus = updates.calendarEventStatus
+    }
+
+    const response = await fetch(
+      `${API_BASE}/plan/section?conversationId=${encodeURIComponent(conversationId)}`,
+      {
+        method: 'PATCH',
+        headers: this.getHeaders(),
+        body: JSON.stringify(body),
+      }
+    )
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(
+        (errorData as { error?: { message?: string } }).error?.message ||
+          'Failed to update plan section'
+      )
+    }
+
+    const data = await response.json()
+    return {
+      section: this.normalizePlanSection(data.section),
+    }
   }
 
   async lockSection(sectionId: string, locked: boolean): Promise<{
