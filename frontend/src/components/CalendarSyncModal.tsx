@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useGoogleLogin } from '@react-oauth/google'
+import { Badge } from '@/components/ui/badge'
 import { CalendarPlus } from 'lucide-react'
 import { toast } from 'sonner'
 import { PlanSection } from '../types'
@@ -11,6 +12,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 interface CalendarSyncModalProps {
   conversationId: string
   sections: PlanSection[]
+  calendarEventsCreated?: boolean
+  onCalendarSynced?: () => void
 }
 
 interface SyncConfig {
@@ -19,13 +22,19 @@ interface SyncConfig {
   includeSharedMembers: boolean
 }
 
-export default function CalendarSyncModal({ conversationId, sections }: CalendarSyncModalProps) {
+export default function CalendarSyncModal({
+  conversationId,
+  sections,
+  calendarEventsCreated = false,
+  onCalendarSynced,
+}: CalendarSyncModalProps) {
   const [open, setOpen] = useState(false)
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [includeSharedMembers, setIncludeSharedMembers] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [pendingConfig, setPendingConfig] = useState<SyncConfig | null>(null)
+  /** Ref avoids a race: `login()` can run before React applies `setState` for pending config. */
+  const pendingConfigRef = useRef<SyncConfig | null>(null)
 
   const sortedSections = useMemo(() => {
     return [...sections].sort((a, b) => {
@@ -39,7 +48,10 @@ export default function CalendarSyncModal({ conversationId, sections }: Calendar
   const login = useGoogleLogin({
     scope: 'https://www.googleapis.com/auth/calendar.events',
     onSuccess: async (tokenResponse) => {
+      const pendingConfig = pendingConfigRef.current
+      pendingConfigRef.current = null
       if (!pendingConfig) {
+        setIsSubmitting(false)
         return
       }
 
@@ -60,38 +72,63 @@ export default function CalendarSyncModal({ conversationId, sections }: Calendar
           throw new Error('No events generated for selected date range')
         }
 
-        await Promise.all(
-          events.map(async (event) => {
-            const response = await fetch(
-              'https://www.googleapis.com/calendar/v3/calendars/primary/events?sendUpdates=all',
-              {
-                method: 'POST',
-                headers: {
-                  Authorization: `Bearer ${tokenResponse.access_token}`,
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(event),
-              }
-            )
+        const calendarUrl = 'https://www.googleapis.com/calendar/v3/calendars/primary/events?sendUpdates=all'
+        const headers = {
+          Authorization: `Bearer ${tokenResponse.access_token}`,
+          'Content-Type': 'application/json',
+        } as const
 
-            if (!response.ok) {
-              throw new Error('Failed to create one or more calendar events')
-            }
+        for (const event of events) {
+          const { sectionId, ...eventBody } = event
+          const response = await fetch(calendarUrl, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(eventBody),
           })
-        )
+          if (!response.ok) {
+            try {
+              await apiService.updatePlanSection(conversationId, sectionId, {
+                calendarEventStatus: 'failed',
+              })
+            } catch {
+              /* best effort */
+            }
+            throw new Error('Failed to create one or more calendar events')
+          }
+          try {
+            await apiService.updatePlanSection(conversationId, sectionId, {
+              calendarEventStatus: 'created',
+            })
+          } catch (syncErr) {
+            toast.warning(
+              syncErr instanceof Error
+                ? `${syncErr.message} — calendar item was still created`
+                : 'Calendar item was created but plan status was not saved'
+            )
+          }
+        }
 
-        toast.success(`Added ${events.length} plan item(s) to Google Calendar`)
+        try {
+          await apiService.setConversationCalendarEventsCreated(conversationId, true)
+          onCalendarSynced?.()
+          toast.success(`Added ${events.length} plan item(s) to Google Calendar`)
+        } catch (syncErr) {
+          toast.warning(
+            syncErr instanceof Error
+              ? `${syncErr.message} — events were still added in Google Calendar`
+              : 'Events were added in Google Calendar, but sync status was not saved on the server'
+          )
+        }
         setOpen(false)
       } catch (error) {
         toast.error(error instanceof Error ? error.message : 'Failed to sync calendar')
       } finally {
         setIsSubmitting(false)
-        setPendingConfig(null)
       }
     },
     onError: () => {
       setIsSubmitting(false)
-      setPendingConfig(null)
+      pendingConfigRef.current = null
       toast.error('Google Calendar consent was not granted')
     },
   })
@@ -114,19 +151,26 @@ export default function CalendarSyncModal({ conversationId, sections }: Calendar
       return
     }
 
+    pendingConfigRef.current = { startDate, endDate, includeSharedMembers }
     setIsSubmitting(true)
-    setPendingConfig({ startDate, endDate, includeSharedMembers })
     login()
   }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="outline" size="sm" className="gap-2" disabled={sections.length === 0}>
-          <CalendarPlus className="h-4 w-4" />
-          Add to Google Calendar
-        </Button>
-      </DialogTrigger>
+      <div className="flex flex-col items-end gap-1">
+        <DialogTrigger asChild>
+          <Button variant="outline" size="sm" className="gap-2" disabled={sections.length === 0}>
+            <CalendarPlus className="h-4 w-4" />
+            {calendarEventsCreated ? 'Add to Google Calendar again' : 'Add to Google Calendar'}
+          </Button>
+        </DialogTrigger>
+        {calendarEventsCreated && (
+          <Badge variant="secondary" className="text-[10px] font-normal">
+            Calendar events created
+          </Badge>
+        )}
+      </div>
       <DialogContent className="sm:max-w-[460px]">
         <DialogHeader>
           <DialogTitle>Sync plan to calendars</DialogTitle>
@@ -179,6 +223,7 @@ function buildEventsForDateRange(
   endDateInput: string,
   attendeeEmails: string[]
 ): Array<{
+  sectionId: string
   summary: string
   description: string
   start: { date: string }
@@ -202,6 +247,7 @@ function buildEventsForDateRange(
       : section.content
 
     return {
+      sectionId: section.id,
       summary,
       description,
       start: { date: formatDate(eventStart) },

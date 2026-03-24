@@ -55,6 +55,8 @@ export const planSections = pgTable('plan_sections', {
     phaseId: text('phase_id'),
     phaseOrder: integer('phase_order'),
     structuredData: jsonb('structured_data'),
+    /** Set when a calendar event is created for this section (e.g. Google Calendar). */
+    calendarEventStatus: text('calendar_event_status'),
 }, (table) => ({
     conversationIdIdx: index('plan_sections_conversation_id_idx').on(table.conversationId),
     userIdIdx: index('plan_sections_user_id_idx').on(table.userId),

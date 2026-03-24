@@ -2,7 +2,7 @@ import { PlanSection } from '../types'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Lock, Unlock, Bot, Reply, ChevronDown } from 'lucide-react'
+import { Lock, Unlock, Bot, Reply, ChevronDown, CalendarCheck, CalendarX } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface PlanSectionItemProps {
@@ -57,6 +57,18 @@ export default function PlanSectionItem({
               <Badge variant="secondary" className="gap-1">
                 <Lock className="h-3 w-3" />
                 Locked
+              </Badge>
+            )}
+            {section.calendarEventStatus === 'created' && (
+              <Badge variant="outline" className="gap-1 text-muted-foreground font-normal">
+                <CalendarCheck className="h-3 w-3" />
+                On calendar
+              </Badge>
+            )}
+            {section.calendarEventStatus === 'failed' && (
+              <Badge variant="destructive" className="gap-1 font-normal">
+                <CalendarX className="h-3 w-3" />
+                Calendar sync failed
               </Badge>
             )}
           </div>

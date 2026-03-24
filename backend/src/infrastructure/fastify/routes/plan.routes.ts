@@ -11,10 +11,13 @@ const applyToPlanSchema = z.object({
   conversationId: z.string().optional().default('default'),
 })
 
+const planCalendarEventStatusSchema = z.enum(['created', 'failed'])
+
 const updatePlanSectionSchema = z.object({
   sectionId: z.string().min(1),
   content: z.string().optional(),
   locked: z.boolean().optional(),
+  calendarEventStatus: planCalendarEventStatusSchema.nullable().optional(),
 })
 
 const lockSectionSchema = z.object({
@@ -116,15 +119,17 @@ const planRoutes: FastifyPluginAsync = async (fastify) => {
       const userId = request.userId!
 
       // Sanitize content if provided
+      const { sectionId, calendarEventStatus, locked, content } = body
       const updates = {
-        ...body,
-        content: body.content ? sanitizeUserInput(body.content) : undefined,
+        locked,
+        calendarEventStatus,
+        content: content ? sanitizeUserInput(content) : undefined,
       }
 
       const section = await fastify.services.plan.updatePlanSection(
         userId,
         query.conversationId,
-        body.sectionId,
+        sectionId,
         updates
       )
 

@@ -14,11 +14,15 @@ export interface IMessageRepository {
   delete(id: string): Promise<boolean>
 }
 
+export type PlanSectionPatch = Omit<Partial<PlanSection>, 'calendarEventStatus'> & {
+  calendarEventStatus?: PlanSection['calendarEventStatus'] | null
+}
+
 export interface IPlanSectionRepository {
   create(section: Omit<PlanSection, 'id' | 'timestamp'>): Promise<PlanSection>
   findById(id: string): Promise<PlanSection | null>
   findByConversationId(conversationId: string): Promise<PlanSection[]>
-  update(id: string, updates: Partial<PlanSection>): Promise<PlanSection | null>
+  update(id: string, updates: PlanSectionPatch): Promise<PlanSection | null>
   delete(id: string): Promise<boolean>
   deleteByConversationId(conversationId: string): Promise<number>
 }
