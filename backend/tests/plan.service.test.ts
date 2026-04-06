@@ -29,54 +29,233 @@ describe('PlanService', () => {
   })
 
   describe('applyMessageToPlan', () => {
-    it('should apply AI message to plan', async () => {
+    it('applies plain AI text as legacy plan section', async () => {
       const userId = 'user-1'
-      const conversationId = 'conv-1'
       const messageId = 'msg-1'
 
-      const conversation = createTestConversation({ id: conversationId, userId })
-      const aiMessage = createTestMessage({ id: messageId, type: 'ai', content: 'AI suggestion' })
+      const conversation = createTestConversation({ id: 'conv-1', userId })
+      const aiMessage = createTestMessage({
+        id: messageId,
+        conversationId: conversation.id,
+        type: 'ai',
+        content: 'AI suggestion',
+      })
       const planSection = createTestPlanSection({ content: 'AI suggestion' })
       const planUpdateMessage = createTestMessage({ type: 'plan_update' })
 
-      vi.mocked(mockConversationRepo.findById).mockResolvedValue(conversation)
       vi.mocked(mockMessageRepo.findById).mockResolvedValue(aiMessage)
+      vi.mocked(mockConversationRepo.getOrCreate).mockResolvedValue(conversation)
       vi.mocked(mockPlanSectionRepo.create).mockResolvedValue(planSection)
       vi.mocked(mockMessageRepo.create).mockResolvedValue(planUpdateMessage)
 
-      const result = await planService.applyMessageToPlan(userId, conversationId, messageId)
+      const result = await planService.applyMessageToPlan(userId, conversation.id, messageId)
 
       expect(result.planSection).toEqual(planSection)
+      expect(result.planSections).toEqual([planSection])
+      expect(result.appliedMode).toBe('text')
       expect(result.planUpdateMessage).toEqual(planUpdateMessage)
     })
 
-    it('should throw NotFoundError for non-existent conversation', async () => {
-      vi.mocked(mockConversationRepo.findById).mockResolvedValue(null)
+    it('applies structured full plan JSON by creating phase sections', async () => {
+      const userId = 'user-1'
+      const messageId = 'msg-2'
+      const conversation = createTestConversation({
+        id: 'conv-1',
+        userId,
+        metadata: { planRev: 0 },
+      })
 
-      await expect(
-        planService.applyMessageToPlan('user-1', 'conv-1', 'msg-1')
-      ).rejects.toThrow(NotFoundError)
+      const aiMessage = createTestMessage({
+        id: messageId,
+        conversationId: conversation.id,
+        type: 'ai',
+        content: JSON.stringify({
+          v: 1,
+          rev: 1,
+          ph: [
+            {
+              id: 'p1',
+              n: 'Research',
+              o: 1,
+              st: 'ip',
+              sum: 'Audit architecture',
+              it: [{ id: 't1', c: 'Map API dependencies', st: 'td' }],
+            },
+            {
+              id: 'p2',
+              n: 'Build',
+              o: 2,
+              st: 'td',
+              sum: 'Implement service changes',
+              it: [{ id: 't2', c: 'Add JSON parser', st: 'td' }],
+            },
+          ],
+        }),
+      })
+
+      const section1 = createTestPlanSection({ id: 's1', phaseId: 'p1' })
+      const section2 = createTestPlanSection({ id: 's2', phaseId: 'p2' })
+      const updateMsg = createTestMessage({ type: 'plan_update' })
+
+      vi.mocked(mockMessageRepo.findById).mockResolvedValue(aiMessage)
+      vi.mocked(mockConversationRepo.getOrCreate).mockResolvedValue(conversation)
+      vi.mocked(mockPlanSectionRepo.findByConversationId).mockResolvedValue([])
+      vi.mocked(mockPlanSectionRepo.create)
+        .mockResolvedValueOnce(section1)
+        .mockResolvedValueOnce(section2)
+      vi.mocked(mockConversationRepo.update).mockResolvedValue(conversation)
+      vi.mocked(mockMessageRepo.create).mockResolvedValue(updateMsg)
+
+      const result = await planService.applyMessageToPlan(userId, conversation.id, messageId)
+
+      expect(result.appliedMode).toBe('plan_doc')
+      expect(result.planRevision).toBe(1)
+      expect(result.planSections).toHaveLength(2)
+      expect(mockPlanSectionRepo.create).toHaveBeenCalledTimes(2)
+      expect(mockConversationRepo.update).toHaveBeenCalledWith(conversation.id, {
+        metadata: { planRev: 1, planVersion: 1 },
+      })
     })
 
-    it('should throw ValidationError for conversation not belonging to user', async () => {
-      const conversation = createTestConversation({ userId: 'other-user' })
-      vi.mocked(mockConversationRepo.findById).mockResolvedValue(conversation)
+    it('applies phase_replace JSON by updating only one phase', async () => {
+      const userId = 'user-1'
+      const messageId = 'msg-3'
+      const conversation = createTestConversation({
+        id: 'conv-1',
+        userId,
+        metadata: { planRev: 1 },
+      })
 
-      await expect(
-        planService.applyMessageToPlan('user-1', 'conv-1', 'msg-1')
-      ).rejects.toThrow(ValidationError)
+      const aiMessage = createTestMessage({
+        id: messageId,
+        conversationId: conversation.id,
+        type: 'ai',
+        content: JSON.stringify({
+          v: 1,
+          rev: 2,
+          op: 'phase_replace',
+          pid: 'p1',
+          ph: {
+            id: 'p1',
+            n: 'Research',
+            o: 1,
+            st: 'dn',
+            sum: 'Audit complete',
+            it: [{ id: 't1', c: 'Map API dependencies', st: 'dn' }],
+          },
+        }),
+      })
+
+      const existing = createTestPlanSection({ id: 'section-1', phaseId: 'p1', locked: false })
+      const updated = createTestPlanSection({ id: 'section-1', phaseId: 'p1', content: 'updated' })
+      const updateMsg = createTestMessage({ type: 'plan_update' })
+
+      vi.mocked(mockMessageRepo.findById).mockResolvedValue(aiMessage)
+      vi.mocked(mockConversationRepo.getOrCreate).mockResolvedValue(conversation)
+      vi.mocked(mockPlanSectionRepo.findByConversationId).mockResolvedValue([existing])
+      vi.mocked(mockPlanSectionRepo.update).mockResolvedValue(updated)
+      vi.mocked(mockConversationRepo.update).mockResolvedValue(conversation)
+      vi.mocked(mockMessageRepo.create).mockResolvedValue(updateMsg)
+
+      const result = await planService.applyMessageToPlan(userId, conversation.id, messageId)
+
+      expect(result.appliedMode).toBe('phase_replace')
+      expect(result.planSections).toEqual([updated])
+      expect(mockPlanSectionRepo.update).toHaveBeenCalledTimes(1)
     })
 
-    it('should throw ValidationError for non-AI message', async () => {
-      const conversation = createTestConversation()
+    it('accepts stale revision and advances to next server revision', async () => {
+      const conversation = createTestConversation({
+        id: 'conv-1',
+        userId: 'user-1',
+        metadata: { planRev: 3 },
+      })
+      const aiMessage = createTestMessage({
+        id: 'msg-stale',
+        conversationId: conversation.id,
+        type: 'ai',
+        content: JSON.stringify({
+          v: 1,
+          rev: 2,
+          ph: [
+            {
+              id: 'p1',
+              n: 'Research',
+              o: 1,
+              st: 'ip',
+              sum: 'x',
+              it: [{ id: 't1', c: 'y', st: 'td' }],
+            },
+          ],
+        }),
+      })
+
+      vi.mocked(mockMessageRepo.findById).mockResolvedValue(aiMessage)
+      vi.mocked(mockConversationRepo.getOrCreate).mockResolvedValue(conversation)
+      vi.mocked(mockPlanSectionRepo.findByConversationId).mockResolvedValue([])
+      vi.mocked(mockPlanSectionRepo.create).mockResolvedValue(createTestPlanSection({ id: 'new-1' }))
+      vi.mocked(mockConversationRepo.update).mockResolvedValue(conversation)
+      vi.mocked(mockMessageRepo.create).mockResolvedValue(createTestMessage({ type: 'plan_update' }))
+
+      const result = await planService.applyMessageToPlan('user-1', 'conv-1', 'msg-stale')
+      expect(result.planRevision).toBe(4)
+      expect(mockConversationRepo.update).toHaveBeenCalledWith(conversation.id, {
+        metadata: { planRev: 4, planVersion: 1 },
+      })
+    })
+
+    it('creates a phase when phase_replace targets unknown phase id', async () => {
+      const conversation = createTestConversation({
+        id: 'conv-1',
+        userId: 'user-1',
+        metadata: { planRev: 1 },
+      })
+      const aiMessage = createTestMessage({
+        id: 'msg-unknown',
+        conversationId: conversation.id,
+        type: 'ai',
+        content: JSON.stringify({
+          v: 1,
+          rev: 2,
+          op: 'phase_replace',
+          pid: 'missing',
+          ph: {
+            id: 'missing',
+            n: 'Missing',
+            o: 1,
+            st: 'td',
+            sum: 'x',
+            it: [{ id: 't1', c: 'y', st: 'td' }],
+          },
+        }),
+      })
+
+      vi.mocked(mockMessageRepo.findById).mockResolvedValue(aiMessage)
+      vi.mocked(mockConversationRepo.getOrCreate).mockResolvedValue(conversation)
+      vi.mocked(mockPlanSectionRepo.findByConversationId).mockResolvedValue([])
+      vi.mocked(mockPlanSectionRepo.create).mockResolvedValue(
+        createTestPlanSection({ id: 'created-missing', phaseId: 'missing' })
+      )
+      vi.mocked(mockConversationRepo.update).mockResolvedValue(conversation)
+      vi.mocked(mockMessageRepo.create).mockResolvedValue(createTestMessage({ type: 'plan_update' }))
+
+      const result = await planService.applyMessageToPlan('user-1', 'conv-1', 'msg-unknown')
+      expect(result.appliedMode).toBe('phase_replace')
+      expect(result.planSections).toHaveLength(1)
+      expect(result.planSections[0].phaseId).toBe('missing')
+    })
+
+    it('throws NotFoundError for non-existent message', async () => {
+      vi.mocked(mockMessageRepo.findById).mockResolvedValue(null)
+
+      await expect(planService.applyMessageToPlan('user-1', 'conv-1', 'msg-1')).rejects.toThrow(NotFoundError)
+    })
+
+    it('throws ValidationError for non-AI message', async () => {
       const userMessage = createTestMessage({ type: 'user' })
-
-      vi.mocked(mockConversationRepo.findById).mockResolvedValue(conversation)
       vi.mocked(mockMessageRepo.findById).mockResolvedValue(userMessage)
 
-      await expect(
-        planService.applyMessageToPlan('user-1', 'conv-1', 'msg-1')
-      ).rejects.toThrow(ValidationError)
+      await expect(planService.applyMessageToPlan('user-1', 'conv-1', 'msg-1')).rejects.toThrow(ValidationError)
     })
   })
 
@@ -100,6 +279,10 @@ describe('PlanService', () => {
   })
 
   describe('updatePlanSection', () => {
+    beforeEach(() => {
+      vi.mocked(mockConversationRepo.getOrCreate).mockResolvedValue(createTestConversation({ id: 'conv-1' }))
+    })
+
     it('should update plan section', async () => {
       const userId = 'user-1'
       const conversationId = 'conv-1'
@@ -115,6 +298,63 @@ describe('PlanService', () => {
       const result = await planService.updatePlanSection(userId, conversationId, sectionId, updates)
 
       expect(result).toEqual(updatedSection)
+    })
+
+    it('should update calendar event status', async () => {
+      const userId = 'user-1'
+      const conversationId = 'conv-1'
+      const sectionId = 'section-1'
+      const calendarEventStatus = 'created' as const
+
+      const section = createTestPlanSection({ id: sectionId, userId, conversationId })
+      const updatedSection = createTestPlanSection({ ...section, calendarEventStatus })
+
+      vi.mocked(mockPlanSectionRepo.findById).mockResolvedValue(section)
+      vi.mocked(mockPlanSectionRepo.update).mockResolvedValue(updatedSection)
+
+      const result = await planService.updatePlanSection(userId, conversationId, sectionId, {
+        calendarEventStatus,
+      })
+
+      expect(result.calendarEventStatus).toBe('created')
+      expect(mockPlanSectionRepo.update).toHaveBeenCalledWith(sectionId, { calendarEventStatus })
+    })
+
+    it('allows a conversation member to set calendar event status on host-owned sections', async () => {
+      const memberUserId = 'member-user'
+      const conversationId = 'conv-1'
+      const sectionId = 'section-1'
+      const calendarEventStatus = 'created' as const
+
+      const section = createTestPlanSection({
+        id: sectionId,
+        userId: 'host-user',
+        conversationId,
+      })
+      const updatedSection = createTestPlanSection({ ...section, calendarEventStatus })
+
+      vi.mocked(mockPlanSectionRepo.findById).mockResolvedValue(section)
+      vi.mocked(mockPlanSectionRepo.update).mockResolvedValue(updatedSection)
+
+      const result = await planService.updatePlanSection(memberUserId, conversationId, sectionId, {
+        calendarEventStatus,
+      })
+
+      expect(result.calendarEventStatus).toBe('created')
+    })
+
+    it('does not allow a conversation member to change section content without owning the section', async () => {
+      const section = createTestPlanSection({
+        userId: 'host-user',
+        conversationId: 'conv-1',
+      })
+      vi.mocked(mockPlanSectionRepo.findById).mockResolvedValue(section)
+
+      await expect(
+        planService.updatePlanSection('member-user', 'conv-1', 'section-1', {
+          content: 'changed',
+        })
+      ).rejects.toThrow(ValidationError)
     })
 
     it('should throw NotFoundError for non-existent section', async () => {
@@ -133,9 +373,23 @@ describe('PlanService', () => {
         planService.updatePlanSection('user-1', 'conv-1', 'section-1', {})
       ).rejects.toThrow(ValidationError)
     })
+
+    it('should throw ValidationError when section does not belong to the conversation', async () => {
+      vi.mocked(mockConversationRepo.getOrCreate).mockResolvedValue(createTestConversation({ id: 'conv-other' }))
+      const section = createTestPlanSection({ userId: 'user-1', conversationId: 'conv-1' })
+      vi.mocked(mockPlanSectionRepo.findById).mockResolvedValue(section)
+
+      await expect(
+        planService.updatePlanSection('user-1', 'conv-other', 'section-1', {})
+      ).rejects.toThrow(ValidationError)
+    })
   })
 
   describe('toggleSectionLock', () => {
+    beforeEach(() => {
+      vi.mocked(mockConversationRepo.getOrCreate).mockResolvedValue(createTestConversation({ id: 'conv-1' }))
+    })
+
     it('should lock a section', async () => {
       const userId = 'user-1'
       const conversationId = 'conv-1'

@@ -104,4 +104,27 @@ describe('PlanSectionItem Component', () => {
     // Check timestamp is displayed (format depends on locale)
     expect(screen.getByText(/1\/1\/2024/)).toBeInTheDocument()
   })
+
+  it('renders structured phase summary and tasks when structuredData exists', () => {
+    render(
+      <PlanSectionItem
+        section={createSection({
+          structuredData: {
+            id: 'p1',
+            n: 'Research',
+            o: 1,
+            st: 'ip',
+            sum: 'Audit current architecture',
+            it: [{ id: 't1', c: 'Map API dependencies', st: 'td' }],
+          },
+        })}
+        onLockSection={vi.fn()}
+      />
+    )
+
+    expect(screen.getByText('Research')).toBeInTheDocument()
+    expect(screen.getByText('In Progress')).toBeInTheDocument()
+    expect(screen.getByText('Audit current architecture')).toBeInTheDocument()
+    expect(screen.getByText('[Todo] Map API dependencies')).toBeInTheDocument()
+  })
 })

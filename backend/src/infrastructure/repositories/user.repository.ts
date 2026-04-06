@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm'
+import { eq, or, ilike } from 'drizzle-orm'
 import { NodePgDatabase } from 'drizzle-orm/node-postgres'
 import { IUserRepository } from '../../domain/repositories'
 import { User } from '../../domain/types'
@@ -93,6 +93,20 @@ export class UserRepository implements IUserRepository {
       return result.rowCount ? result.rowCount > 0 : false
     } catch (error) {
       throw new DatabaseError('Failed to delete user', error as Error)
+    }
+  }
+
+  async search(query: string, maxResults: number = 10): Promise<User[]> {
+    try {
+      const results = await this.db
+        .select()
+        .from(users)
+        .where(ilike(users.email, `%${query}%`))
+        .limit(maxResults)
+        
+      return results.map(r => this.toDomain(r))
+    } catch (error) {
+      throw new DatabaseError('Failed to search users', error as Error)
     }
   }
 

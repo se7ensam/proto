@@ -147,6 +147,17 @@ export class AuthService {
   }
 
   /**
+   * Search users by email or name
+   */
+  async searchUsers(query: string, maxResults: number = 10): Promise<User[]> {
+    if ((this.userRepo as any).search) {
+      return (this.userRepo as any).search(query, maxResults)
+    }
+    // Fallback if not implemented
+    return []
+  }
+
+  /**
    * Email validation helper
    */
   private isValidEmail(email: string): boolean {

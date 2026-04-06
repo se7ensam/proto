@@ -1,4 +1,9 @@
-import { Message, PlanSection } from '../types'
+import {
+  ConversationSummary,
+  Message,
+  PlanCalendarEventStatus,
+  PlanSection,
+} from '../types'
 
 const API_BASE = '/api'
 
@@ -15,13 +20,43 @@ export interface RegenerateResponse {
 
 export interface ApplyToPlanResponse {
   planSection: PlanSection
+  planSections?: PlanSection[]
   planUpdateMessage: Message
+  appliedMode?: 'text' | 'plan_doc' | 'phase_replace'
+  planRevision?: number
   conversationId: string
+}
+
+export interface GetConversationsResponse {
+  conversations: ConversationSummary[]
+}
+
+export interface CreateConversationResponse {
+  conversation: ConversationSummary
+}
+
+export interface DeleteConversationResponse {
+  conversation: ConversationSummary
+}
+
+export interface RestoreConversationResponse {
+  conversation: ConversationSummary
+}
+
+export interface UpdateConversationTitleResponse {
+  conversation: ConversationSummary
+}
+
+export interface ConversationMemberResponse {
+  userId: string
+  email: string
+  role: 'host' | 'member'
 }
 
 class ApiService {
   private conversationId: string = 'default'
   private token: string | null = localStorage.getItem('auth_token')
+  private tokenClaimsCache: { token: string; payload: Record<string, unknown> } | null = null
 
   constructor() {
     // No-op
@@ -33,12 +68,42 @@ class ApiService {
 
   setToken(token: string) {
     this.token = token
+    this.tokenClaimsCache = null
     localStorage.setItem('auth_token', token)
   }
 
   logout() {
     this.token = null
+    this.tokenClaimsCache = null
     localStorage.removeItem('auth_token')
+  }
+
+  private getTokenPayload(): Record<string, unknown> | null {
+    if (!this.token) return null
+    if (this.tokenClaimsCache?.token === this.token) {
+      return this.tokenClaimsCache.payload
+    }
+    try {
+      const payload = JSON.parse(atob(this.token.split('.')[1])) as Record<string, unknown>
+      this.tokenClaimsCache = { token: this.token, payload }
+      return payload
+    } catch {
+      return null
+    }
+  }
+
+  get userId(): string | null {
+    const payload = this.getTokenPayload()
+    if (!payload) return null
+    const raw = payload.userId ?? payload.sub ?? payload.id
+    return typeof raw === 'string' ? raw : null
+  }
+
+  get userEmail(): string | null {
+    const payload = this.getTokenPayload()
+    if (!payload) return null
+    const raw = payload.email
+    return typeof raw === 'string' ? raw : null
   }
 
   private getHeaders(): any {
@@ -49,6 +114,50 @@ class ApiService {
       headers['Authorization'] = `Bearer ${this.token}`
     }
     return headers
+  }
+
+  private normalizePlanSection(section: any): PlanSection {
+    return {
+      ...section,
+      timestamp: new Date(section.timestamp),
+    }
+  }
+
+  private normalizeConversation(conversation: any): ConversationSummary {
+    const metadata =
+      conversation && typeof conversation.metadata === 'object' && !Array.isArray(conversation.metadata)
+        ? conversation.metadata
+        : undefined
+    const rawTitle =
+      typeof conversation.title === 'string'
+        ? conversation.title
+        : typeof metadata?.title === 'string'
+          ? metadata.title
+          : undefined
+    const title = rawTitle?.trim() || 'New chat'
+    const deletedAt =
+      typeof conversation.deletedAt === 'string'
+        ? conversation.deletedAt
+        : typeof metadata?.deletedAt === 'string'
+          ? metadata.deletedAt
+          : undefined
+
+    const calendarEventsCreated =
+      typeof metadata?.calendarEventsCreated === 'boolean'
+        ? metadata.calendarEventsCreated
+        : typeof conversation.calendarEventsCreated === 'boolean'
+          ? conversation.calendarEventsCreated
+          : false
+
+    return {
+      ...conversation,
+      createdAt: new Date(conversation.createdAt),
+      updatedAt: new Date(conversation.updatedAt),
+      title,
+      deletedAt: deletedAt ? new Date(deletedAt) : undefined,
+      isEmpty: Boolean(conversation.isEmpty),
+      calendarEventsCreated,
+    }
   }
 
   async login(email: string, password: string): Promise<{ user: any; token: string }> {
@@ -239,6 +348,141 @@ class ApiService {
     }
   }
 
+  async getConversations(): Promise<GetConversationsResponse> {
+    const response = await fetch(`${API_BASE}/chat/conversations`, {
+      headers: this.getHeaders(),
+    })
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        throw new Error('Unauthorized: Please login again')
+      }
+      throw new Error('Failed to fetch conversations')
+    }
+
+    const data = await response.json()
+    return {
+      conversations: (data.conversations || []).map((conversation: any) => this.normalizeConversation(conversation)),
+    }
+  }
+
+  async getDeletedConversations(): Promise<GetConversationsResponse> {
+    const response = await fetch(`${API_BASE}/chat/conversations/deleted`, {
+      headers: this.getHeaders(),
+    })
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        throw new Error('Unauthorized: Please login again')
+      }
+      throw new Error('Failed to fetch deleted conversations')
+    }
+
+    const data = await response.json()
+    return {
+      conversations: (data.conversations || []).map((conversation: any) => this.normalizeConversation(conversation)),
+    }
+  }
+
+  async createConversation(): Promise<CreateConversationResponse> {
+    const response = await fetch(`${API_BASE}/chat/conversations`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({}),
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.error?.message || 'Failed to create conversation')
+    }
+
+    const data = await response.json()
+    return {
+      conversation: this.normalizeConversation({ ...data.conversation, isEmpty: true }),
+    }
+  }
+
+  async deleteConversation(conversationId: string): Promise<DeleteConversationResponse> {
+    const response = await fetch(`${API_BASE}/chat/conversations/${conversationId}`, {
+      method: 'DELETE',
+      headers: this.getHeaders(),
+      body: JSON.stringify({}),
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.error?.message || 'Failed to delete conversation')
+    }
+
+    const data = await response.json()
+    return {
+      conversation: this.normalizeConversation(data.conversation),
+    }
+  }
+
+  async restoreConversation(conversationId: string): Promise<RestoreConversationResponse> {
+    const response = await fetch(`${API_BASE}/chat/conversations/${conversationId}/restore`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({}),
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.error?.message || 'Failed to restore conversation')
+    }
+
+    const data = await response.json()
+    return {
+      conversation: this.normalizeConversation(data.conversation),
+    }
+  }
+
+  async setConversationCalendarEventsCreated(
+    conversationId: string,
+    calendarEventsCreated: boolean
+  ): Promise<UpdateConversationTitleResponse> {
+    const response = await fetch(`${API_BASE}/chat/conversations/${conversationId}/calendar`, {
+      method: 'PATCH',
+      headers: this.getHeaders(),
+      body: JSON.stringify({ calendarEventsCreated }),
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(
+        (errorData as { error?: { message?: string } }).error?.message ||
+          'Failed to update calendar sync status'
+      )
+    }
+
+    const data = await response.json()
+    return {
+      conversation: this.normalizeConversation(data.conversation),
+    }
+  }
+
+  async updateConversationTitle(
+    conversationId: string,
+    title: string
+  ): Promise<UpdateConversationTitleResponse> {
+    const response = await fetch(`${API_BASE}/chat/conversations/${conversationId}`, {
+      method: 'PATCH',
+      headers: this.getHeaders(),
+      body: JSON.stringify({ title }),
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.error?.message || 'Failed to update conversation title')
+    }
+
+    const data = await response.json()
+    return {
+      conversation: this.normalizeConversation(data.conversation),
+    }
+  }
+
   async applyToPlan(messageId: string): Promise<ApplyToPlanResponse> {
     const response = await fetch(`${API_BASE}/plan/apply`, {
       method: 'POST',
@@ -254,7 +498,18 @@ class ApiService {
       throw new Error(errorData.error?.message || 'Failed to apply to plan')
     }
 
-    return response.json()
+    const data = await response.json()
+    return {
+      ...data,
+      planSection: this.normalizePlanSection(data.planSection),
+      planSections: Array.isArray(data.planSections)
+        ? data.planSections.map((section: any) => this.normalizePlanSection(section))
+        : undefined,
+      planUpdateMessage: {
+        ...data.planUpdateMessage,
+        timestamp: new Date(data.planUpdateMessage.timestamp),
+      },
+    }
   }
 
   async getPlanSections(): Promise<{ sections: PlanSection[] }> {
@@ -274,10 +529,101 @@ class ApiService {
 
     const data = await response.json()
     return {
-      sections: data.sections.map((section: any) => ({
-        ...section,
-        timestamp: new Date(section.timestamp),
-      })),
+      sections: data.sections.map((section: any) => this.normalizePlanSection(section)),
+    }
+  }
+
+  // ==================== Members Integration ====================
+
+  async searchUsers(query: string): Promise<{ users: {id: string, email: string}[] }> {
+    const response = await fetch(`${API_BASE}/users/search?q=${encodeURIComponent(query)}`, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to search users')
+    }
+
+    return response.json()
+  }
+
+  async addMember(userId: string): Promise<{ success: boolean }> {
+    const response = await fetch(`${API_BASE}/chat/${this.conversationId}/members`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({ userId }),
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to add member')
+    }
+
+    return response.json()
+  }
+
+  async removeMember(userId: string): Promise<{ success: boolean }> {
+    const response = await fetch(`${API_BASE}/chat/${this.conversationId}/members/${userId}`, {
+      method: 'DELETE',
+      headers: this.getHeaders(),
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to remove member')
+    }
+
+    return response.json()
+  }
+
+  async getConversationMembers(conversationId: string): Promise<{ members: ConversationMemberResponse[] }> {
+    const response = await fetch(`${API_BASE}/chat/${conversationId}/members`, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch conversation members')
+    }
+
+    return response.json()
+  }
+
+  async updatePlanSection(
+    conversationId: string,
+    sectionId: string,
+    updates: {
+      content?: string
+      locked?: boolean
+      calendarEventStatus?: PlanCalendarEventStatus | null
+    }
+  ): Promise<{ section: PlanSection }> {
+    const body: Record<string, unknown> = { sectionId }
+    if (updates.content !== undefined) body.content = updates.content
+    if (updates.locked !== undefined) body.locked = updates.locked
+    if (updates.calendarEventStatus !== undefined) {
+      body.calendarEventStatus = updates.calendarEventStatus
+    }
+
+    const response = await fetch(
+      `${API_BASE}/plan/section?conversationId=${encodeURIComponent(conversationId)}`,
+      {
+        method: 'PATCH',
+        headers: this.getHeaders(),
+        body: JSON.stringify(body),
+      }
+    )
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(
+        (errorData as { error?: { message?: string } }).error?.message ||
+          'Failed to update plan section'
+      )
+    }
+
+    const data = await response.json()
+    return {
+      section: this.normalizePlanSection(data.section),
     }
   }
 
@@ -296,6 +642,88 @@ class ApiService {
     if (!response.ok) {
       const errorData = await response.json()
       throw new Error(errorData.error?.message || 'Failed to lock section')
+    }
+
+    return response.json()
+  }
+
+  // ==================== GitHub Integration ====================
+
+  async initiateGitHubAuth(conversationId: string, collaboratorEmail?: string): Promise<{ authUrl: string; state: string }> {
+    const response = await fetch(`${API_BASE}/github/auth/initiate`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({
+        conversationId,
+        collaboratorEmail,
+      }),
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.error?.message || 'Failed to initiate GitHub auth')
+    }
+
+    return response.json()
+  }
+
+  async getGitHubIntegration(conversationId: string): Promise<{
+    integrated: boolean
+    id?: string
+    githubUsername?: string
+    githubAvatarUrl?: string
+    repoName?: string
+    repoFullName?: string
+    repoUrl?: string
+    repoOwner?: string
+    collaboratorUsername?: string
+    collaborationStatus?: string
+    integrationStatus?: string
+    lastSyncAt?: string
+    createdAt?: string
+  }> {
+    const response = await fetch(
+      `${API_BASE}/github/integration/${conversationId}`,
+      {
+        headers: this.getHeaders(),
+      }
+    )
+
+    if (!response.ok) {
+      return { integrated: false }
+    }
+
+    return response.json()
+  }
+
+  async getGitHubSyncHistory(conversationId: string): Promise<{ history: any[] }> {
+    const response = await fetch(
+      `${API_BASE}/github/integration/${conversationId}/history`,
+      {
+        headers: this.getHeaders(),
+      }
+    )
+
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.error?.message || 'Failed to fetch sync history')
+    }
+
+    return response.json()
+  }
+
+  async disconnectGitHub(conversationId: string): Promise<{ success: boolean }> {
+    const response = await fetch(
+      `${API_BASE}/github/integration/${conversationId}`,
+      {
+        method: 'DELETE',
+        headers: this.getHeaders(),
+      }
+    )
+
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.error?.message || 'Failed to disconnect GitHub')
     }
 
     return response.json()

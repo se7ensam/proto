@@ -11,10 +11,13 @@ const applyToPlanSchema = z.object({
   conversationId: z.string().optional().default('default'),
 })
 
+const planCalendarEventStatusSchema = z.enum(['created', 'failed'])
+
 const updatePlanSectionSchema = z.object({
   sectionId: z.string().min(1),
   content: z.string().optional(),
   locked: z.boolean().optional(),
+  calendarEventStatus: planCalendarEventStatusSchema.nullable().optional(),
 })
 
 const lockSectionSchema = z.object({
@@ -41,9 +44,38 @@ const planRoutes: FastifyPluginAsync = async (fastify) => {
 
       return reply.send({
         planSection: result.planSection,
+        planSections: result.planSections,
         planUpdateMessage: result.planUpdateMessage,
-        conversationId: body.conversationId,
+        appliedMode: result.appliedMode,
+        planRevision: result.planRevision,
+        conversationId: result.planSection.conversationId,
       })
+    }
+  )
+
+  // Get plan sections
+  fastify.get(
+    '/calendar/:conversationId.ics',
+    {
+      onRequest: [fastify.authenticate],
+    },
+    async (request, reply) => {
+      const params = z
+        .object({
+          conversationId: z.string().min(1),
+        })
+        .parse(request.params)
+
+      const userId = request.userId!
+      const ics = await fastify.services.plan.exportCalendarIcs(userId, params.conversationId)
+
+      reply.header('Content-Type', 'text/calendar; charset=utf-8')
+      reply.header(
+        'Content-Disposition',
+        `attachment; filename="plan-${params.conversationId.slice(0, 8)}.ics"`
+      )
+
+      return reply.send(ics)
     }
   )
 
@@ -87,15 +119,17 @@ const planRoutes: FastifyPluginAsync = async (fastify) => {
       const userId = request.userId!
 
       // Sanitize content if provided
+      const { sectionId, calendarEventStatus, locked, content } = body
       const updates = {
-        ...body,
-        content: body.content ? sanitizeUserInput(body.content) : undefined,
+        locked,
+        calendarEventStatus,
+        content: content ? sanitizeUserInput(content) : undefined,
       }
 
       const section = await fastify.services.plan.updatePlanSection(
         userId,
         query.conversationId,
-        body.sectionId,
+        sectionId,
         updates
       )
 

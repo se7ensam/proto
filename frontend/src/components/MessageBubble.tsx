@@ -6,8 +6,9 @@ import TypewriterText from './TypewriterText'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { RefreshCw, FileText, User, Bot, Info, CheckCircle } from 'lucide-react'
+import { RefreshCw, FileText, User, Bot, Info, CheckCircle, Users } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { apiService } from '../services/api'
 
 interface MessageBubbleProps {
   message: Message
@@ -21,6 +22,9 @@ export default function MessageBubble({
   onRegenerate,
 }: MessageBubbleProps) {
   const isUser = message.type === 'user'
+  const isCurrentUser = !message.userId || message.userId === apiService.userId
+  const isOtherUser = isUser && !isCurrentUser
+
   const isAI = message.type === 'ai' || message.type === 'assistant'
   const isSystem = message.type === 'system'
   const isPlanUpdate = message.type === 'plan_update'
@@ -42,7 +46,8 @@ export default function MessageBubble({
   }, [])
 
   const getIcon = () => {
-    if (isUser) return <User className="h-4 w-4" />
+    if (isUser && isCurrentUser) return <User className="h-4 w-4" />
+    if (isOtherUser) return <Users className="h-4 w-4" />
     if (isAI) return <Bot className="h-4 w-4" />
     if (isSystem) return <Info className="h-4 w-4" />
     if (isPlanUpdate) return <CheckCircle className="h-4 w-4" />
@@ -58,6 +63,7 @@ export default function MessageBubble({
   }
 
   const getLabel = () => {
+    if (isOtherUser) return message.userEmail || 'Team Member'
     if (isUser) return 'You'
     if (isAI) return 'AI'
     if (isSystem) return 'System'
@@ -91,7 +97,7 @@ export default function MessageBubble({
             ) : (
               <>
                 {isAI ? (
-                  <TypewriterText content={message.content} isStreaming={true} speed={5} />
+                  <TypewriterText content={message.content} isStreaming={isStreaming} speed={5} />
                 ) : (
                   <TypewriterText content={message.content} isStreaming={false} />
                 )}

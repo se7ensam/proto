@@ -4,7 +4,7 @@
 
 import { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
-import { sanitizeUserInput } from '../../sanitizer'
+import { sanitizeText, sanitizeUserInput } from '../../sanitizer'
 
 const sendMessageSchema = z.object({
   content: z.string().min(1),
@@ -14,6 +14,14 @@ const sendMessageSchema = z.object({
 const regenerateMessageSchema = z.object({
   messageId: z.string().min(1),
   conversationId: z.string().optional().default('default'),
+})
+
+const addMemberSchema = z.object({
+  userId: z.string().uuid(),
+})
+
+const updateConversationTitleSchema = z.object({
+  title: z.string().min(1).max(120),
 })
 
 const chatRoutes: FastifyPluginAsync = async (fastify) => {
@@ -133,6 +141,165 @@ const chatRoutes: FastifyPluginAsync = async (fastify) => {
         messages,
         conversationId: params.conversationId,
       })
+    }
+  )
+
+  // Get all user conversations
+  fastify.get(
+    '/conversations',
+    {
+      onRequest: [fastify.authenticate],
+    },
+    async (request, reply) => {
+      const userId = request.userId!
+      const conversations = await fastify.services.chat.getConversationSummaries(userId)
+
+      return reply.send({ conversations })
+    }
+  )
+
+  // Get deleted user conversations (recycle bin)
+  fastify.get(
+    '/conversations/deleted',
+    {
+      onRequest: [fastify.authenticate],
+    },
+    async (request, reply) => {
+      const userId = request.userId!
+      const conversations = await fastify.services.chat.getDeletedConversationSummaries(userId)
+
+      return reply.send({ conversations })
+    }
+  )
+
+  // Create a new conversation
+  fastify.post(
+    '/conversations',
+    {
+      onRequest: [fastify.authenticate],
+    },
+    async (request, reply) => {
+      const userId = request.userId!
+      const conversation = await fastify.services.chat.createConversation(userId)
+
+      return reply.send({ conversation })
+    }
+  )
+
+  // Soft-delete a conversation
+  fastify.delete(
+    '/conversations/:conversationId',
+    {
+      onRequest: [fastify.authenticate],
+    },
+    async (request, reply) => {
+      const params = z.object({
+        conversationId: z.string().uuid(),
+      }).parse(request.params)
+
+      const userId = request.userId!
+      const conversation = await fastify.services.chat.deleteConversation(userId, params.conversationId)
+
+      return reply.send({ conversation })
+    }
+  )
+
+  // Rename a conversation
+  fastify.patch(
+    '/conversations/:conversationId',
+    {
+      onRequest: [fastify.authenticate],
+    },
+    async (request, reply) => {
+      const params = z.object({
+        conversationId: z.string().uuid(),
+      }).parse(request.params)
+      const body = updateConversationTitleSchema.parse(request.body)
+
+      const userId = request.userId!
+      const sanitizedTitle = sanitizeText(body.title)
+      const conversation = await fastify.services.chat.updateConversationTitle(
+        userId,
+        params.conversationId,
+        sanitizedTitle
+      )
+
+      return reply.send({ conversation })
+    }
+  )
+
+  // Restore a soft-deleted conversation
+  fastify.post(
+    '/conversations/:conversationId/restore',
+    {
+      onRequest: [fastify.authenticate],
+    },
+    async (request, reply) => {
+      const params = z.object({
+        conversationId: z.string().uuid(),
+      }).parse(request.params)
+
+      const userId = request.userId!
+      const conversation = await fastify.services.chat.restoreConversation(userId, params.conversationId)
+
+      return reply.send({ conversation })
+    }
+  )
+
+  // Add member to chat
+  fastify.post(
+    '/:conversationId/members',
+    {
+      onRequest: [fastify.authenticate],
+    },
+    async (request, reply) => {
+      const params = z.object({
+        conversationId: z.string(),
+      }).parse(request.params)
+      
+      const body = addMemberSchema.parse(request.body)
+      const userId = request.userId!
+
+      await fastify.services.chat.addMember(userId, params.conversationId, body.userId)
+
+      return reply.send({ success: true })
+    }
+  )
+
+  // Remove member from chat
+  fastify.delete(
+    '/:conversationId/members/:memberId',
+    {
+      onRequest: [fastify.authenticate],
+    },
+    async (request, reply) => {
+      const params = z.object({
+        conversationId: z.string(),
+        memberId: z.string().uuid(),
+      }).parse(request.params)
+      
+      const userId = request.userId!
+
+      await fastify.services.chat.removeMember(userId, params.conversationId, params.memberId)
+
+      return reply.send({ success: true })
+    }
+  )
+
+  // List chat members (host + invited members)
+  fastify.get(
+    '/:conversationId/members',
+    {
+      onRequest: [fastify.authenticate],
+    },
+    async (request, reply) => {
+      const params = z.object({
+        conversationId: z.string(),
+      }).parse(request.params)
+
+      const userId = request.userId!
+      const members = await fastify.services.chat.getConversationMembers(userId, params.conversationId)
+      return reply.send({ members })
     }
   )
 }

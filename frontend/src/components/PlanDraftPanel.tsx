@@ -1,28 +1,46 @@
 import { PlanSection } from '../types'
 import PlanSectionItem from './PlanSectionItem'
+import { GitHubIntegration } from './GitHubIntegration'
+import CalendarSyncModal from './CalendarSyncModal'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { FileText, Sparkles } from 'lucide-react'
 
 interface PlanDraftPanelProps {
   sections: PlanSection[]
   onLockSection: (sectionId: string) => void
+  conversationId?: string
+  calendarEventsCreated?: boolean
+  onCalendarSynced?: () => void
 }
 
 export default function PlanDraftPanel({
   sections,
   onLockSection,
+  conversationId = 'default',
+  calendarEventsCreated = false,
+  onCalendarSynced,
 }: PlanDraftPanelProps) {
   return (
     <Card className="flex flex-col h-full rounded-none border-0">
       <CardHeader className="border-b bg-muted/50 py-4">
-        <CardTitle className="flex items-center gap-2 text-xl font-semibold text-foreground">
-          <FileText className="h-5 w-5 text-primary" />
-          Plan Draft
-        </CardTitle>
-        <CardDescription className="flex items-center gap-1">
-          <Sparkles className="h-3.5 w-3.5" />
-          Live updates from applied AI suggestions
-        </CardDescription>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <CardTitle className="flex items-center gap-2 text-xl font-semibold text-foreground">
+              <FileText className="h-5 w-5 text-primary" />
+              Plan Draft
+            </CardTitle>
+            <CardDescription className="mt-1 flex items-center gap-1">
+              <Sparkles className="h-3.5 w-3.5" />
+              Live updates from applied AI suggestions
+            </CardDescription>
+          </div>
+          <CalendarSyncModal
+            conversationId={conversationId}
+            sections={sections}
+            calendarEventsCreated={calendarEventsCreated}
+            onCalendarSynced={onCalendarSynced}
+          />
+        </div>
       </CardHeader>
       <CardContent className="flex-1 overflow-y-auto p-4">
         {sections.length === 0 ? (
@@ -42,6 +60,13 @@ export default function PlanDraftPanel({
                 onLockSection={onLockSection}
               />
             ))}
+            
+            {/* GitHub Integration */}
+            {sections.length > 0 && (
+              <div className="pt-4 border-t">
+                <GitHubIntegration conversationId={conversationId} />
+              </div>
+            )}
           </div>
         )}
       </CardContent>

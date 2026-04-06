@@ -10,14 +10,46 @@ import {
 } from "@/components/ui/menubar"
 import { ThemeToggle } from "./theme-toggle"
 import { useTheme } from "next-themes"
-import { LogOut, Moon, Sun, Monitor, HelpCircle, Info } from "lucide-react"
+import { LogOut, Moon, Sun, Monitor, HelpCircle, Info, Check, PlusCircle, Trash2 } from "lucide-react"
+import { ConversationSummary } from "@/types"
 
 interface AppMenubarProps {
   onLogout: () => void
+  onNewConversation: () => void
+  onDeleteConversation: () => void
+  onTogglePlanPanel: () => void
+  onSelectConversation: (conversationId: string) => void
+  conversations: ConversationSummary[]
+  activeConversationId: string | null
+  canCreateConversation: boolean
+  canDeleteConversation: boolean
+  isPlanPanelCollapsed: boolean
 }
 
-export function AppMenubar({ onLogout }: AppMenubarProps) {
+export function AppMenubar({
+  onLogout,
+  onNewConversation,
+  onDeleteConversation,
+  onTogglePlanPanel,
+  onSelectConversation,
+  conversations,
+  activeConversationId,
+  canCreateConversation,
+  canDeleteConversation,
+  isPlanPanelCollapsed,
+}: AppMenubarProps) {
   const { setTheme } = useTheme()
+  const recentConversations = conversations.slice(0, 12)
+
+  const getConversationLabel = (conversation: ConversationSummary) => {
+    return (
+      conversation.title?.trim() ||
+      `Chat ${conversation.updatedAt.toLocaleDateString()} ${conversation.updatedAt.toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+      })}`
+    )
+  }
 
   return (
     <div className="flex items-center justify-between px-4 py-2 border-b bg-background">
@@ -27,8 +59,18 @@ export function AppMenubar({ onLogout }: AppMenubarProps) {
           <MenubarMenu>
             <MenubarTrigger>File</MenubarTrigger>
             <MenubarContent>
-              <MenubarItem>
+              <MenubarItem onClick={onNewConversation} disabled={!canCreateConversation}>
+                <PlusCircle className="mr-2 h-4 w-4" />
                 New Conversation <MenubarShortcut>⌘N</MenubarShortcut>
+              </MenubarItem>
+              {!canCreateConversation && (
+                <MenubarItem disabled>
+                  Send a message first
+                </MenubarItem>
+              )}
+              <MenubarItem onClick={onDeleteConversation} disabled={!canDeleteConversation}>
+                <Trash2 className="mr-2 h-4 w-4" />
+                Delete Current Conversation
               </MenubarItem>
               <MenubarItem>
                 Export Plan <MenubarShortcut>⌘E</MenubarShortcut>
@@ -41,8 +83,35 @@ export function AppMenubar({ onLogout }: AppMenubarProps) {
             </MenubarContent>
           </MenubarMenu>
           <MenubarMenu>
+            <MenubarTrigger>Chats</MenubarTrigger>
+            <MenubarContent>
+              {recentConversations.length === 0 ? (
+                <MenubarItem disabled>No chats yet</MenubarItem>
+              ) : (
+                recentConversations.map((conversation) => (
+                  <MenubarItem
+                    key={conversation.id}
+                    onClick={() => onSelectConversation(conversation.id)}
+                    className="flex items-center gap-2"
+                  >
+                    {conversation.id === activeConversationId ? (
+                      <Check className="h-4 w-4 text-primary" />
+                    ) : (
+                      <span className="inline-block h-4 w-4" />
+                    )}
+                    <span className="truncate">{getConversationLabel(conversation)}</span>
+                  </MenubarItem>
+                ))
+              )}
+            </MenubarContent>
+          </MenubarMenu>
+          <MenubarMenu>
             <MenubarTrigger>View</MenubarTrigger>
             <MenubarContent>
+              <MenubarItem onClick={onTogglePlanPanel}>
+                {isPlanPanelCollapsed ? 'Show Plan Pane' : 'Hide Plan Pane'}
+              </MenubarItem>
+              <MenubarSeparator />
               <MenubarItem onClick={() => setTheme("light")}>
                 <Sun className="mr-2 h-4 w-4" />
                 Light Mode

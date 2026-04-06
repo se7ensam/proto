@@ -2,7 +2,7 @@ import { PlanSection } from '../types'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Lock, Unlock, Bot, Reply } from 'lucide-react'
+import { Lock, Unlock, Bot, Reply, ChevronDown, CalendarCheck, CalendarX } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface PlanSectionItemProps {
@@ -14,6 +14,13 @@ export default function PlanSectionItem({
   section,
   onLockSection,
 }: PlanSectionItemProps) {
+  const statusLabel: Record<'td' | 'ip' | 'dn' | 'bl', string> = {
+    td: 'Todo',
+    ip: 'In Progress',
+    dn: 'Done',
+    bl: 'Blocked',
+  }
+
   // Truncate source message for preview (WhatsApp style)
   const getMessagePreview = (content: string, maxLength: number = 100) => {
     if (content.length <= maxLength) return content
@@ -52,6 +59,18 @@ export default function PlanSectionItem({
                 Locked
               </Badge>
             )}
+            {section.calendarEventStatus === 'created' && (
+              <Badge variant="outline" className="gap-1 text-muted-foreground font-normal">
+                <CalendarCheck className="h-3 w-3" />
+                On calendar
+              </Badge>
+            )}
+            {section.calendarEventStatus === 'failed' && (
+              <Badge variant="destructive" className="gap-1 font-normal">
+                <CalendarX className="h-3 w-3" />
+                Calendar sync failed
+              </Badge>
+            )}
           </div>
           <Button
             variant={section.locked ? "secondary" : "outline"}
@@ -72,12 +91,46 @@ export default function PlanSectionItem({
             )}
           </Button>
         </div>
-        <div className={cn(
-          "whitespace-pre-wrap text-sm",
-          section.locked ? "text-muted-foreground" : "text-foreground"
-        )}>
-          {section.content}
-        </div>
+        {section.structuredData ? (
+          <details className="group rounded-md border bg-muted/30 p-3" open>
+            <summary className="flex cursor-pointer list-none items-center gap-2">
+              <ChevronDown className="h-4 w-4 shrink-0 transition-transform group-open:rotate-180" />
+              <span className="text-sm font-medium">{section.structuredData.n}</span>
+              <Badge
+                variant="secondary"
+                className={cn(
+                  "ml-auto",
+                  section.structuredData.st === 'dn' && "bg-emerald-100 text-emerald-700",
+                  section.structuredData.st === 'bl' && "bg-rose-100 text-rose-700",
+                  section.structuredData.st === 'ip' && "bg-amber-100 text-amber-700"
+                )}
+              >
+                {statusLabel[section.structuredData.st]}
+              </Badge>
+            </summary>
+            <div className="mt-3 space-y-2 text-sm">
+              <p className={cn(section.locked ? "text-muted-foreground" : "text-foreground")}>
+                {section.structuredData.sum}
+              </p>
+              {section.structuredData.it.length > 0 && (
+                <ul className="space-y-1 text-sm text-muted-foreground">
+                  {section.structuredData.it.map((task) => (
+                    <li key={task.id}>
+                      [{statusLabel[task.st]}] {task.c}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </details>
+        ) : (
+          <div className={cn(
+            "whitespace-pre-wrap text-sm",
+            section.locked ? "text-muted-foreground" : "text-foreground"
+          )}>
+            {section.content}
+          </div>
+        )}
         <div className="text-xs text-muted-foreground mt-3 pt-2 border-t">
           {section.timestamp.toLocaleString()}
         </div>

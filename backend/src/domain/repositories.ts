@@ -14,21 +14,34 @@ export interface IMessageRepository {
   delete(id: string): Promise<boolean>
 }
 
+export type PlanSectionPatch = Omit<Partial<PlanSection>, 'calendarEventStatus'> & {
+  calendarEventStatus?: PlanSection['calendarEventStatus'] | null
+}
+
 export interface IPlanSectionRepository {
   create(section: Omit<PlanSection, 'id' | 'timestamp'>): Promise<PlanSection>
   findById(id: string): Promise<PlanSection | null>
   findByConversationId(conversationId: string): Promise<PlanSection[]>
-  update(id: string, updates: Partial<PlanSection>): Promise<PlanSection | null>
+  update(id: string, updates: PlanSectionPatch): Promise<PlanSection | null>
   delete(id: string): Promise<boolean>
+  deleteByConversationId(conversationId: string): Promise<number>
 }
 
 export interface IConversationRepository {
   create(conversation: Omit<Conversation, 'id' | 'createdAt' | 'updatedAt'>): Promise<Conversation>
   findById(id: string): Promise<Conversation | null>
   findByUserId(userId: string): Promise<Conversation[]>
+  findDeletedByUserId(userId: string): Promise<Conversation[]>
   update(id: string, updates: Partial<Conversation>): Promise<Conversation | null>
   delete(id: string): Promise<boolean>
+  softDelete(id: string): Promise<Conversation | null>
+  restore(id: string): Promise<Conversation | null>
   getOrCreate(userId: string, conversationId: string): Promise<Conversation>
+  
+  // Member management
+  addMember(conversationId: string, userId: string, role?: string): Promise<void>
+  removeMember(conversationId: string, userId: string): Promise<boolean>
+  getMembers(conversationId: string): Promise<{userId: string, role: string, joinedAt: Date}[]>
 }
 
 export interface IUserRepository {

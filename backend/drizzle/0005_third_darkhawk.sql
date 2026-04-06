@@ -1,0 +1,1 @@
+ALTER TABLE "plan_sections" ADD COLUMN "calendar_event_status" text;
