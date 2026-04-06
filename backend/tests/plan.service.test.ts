@@ -320,6 +320,43 @@ describe('PlanService', () => {
       expect(mockPlanSectionRepo.update).toHaveBeenCalledWith(sectionId, { calendarEventStatus })
     })
 
+    it('allows a conversation member to set calendar event status on host-owned sections', async () => {
+      const memberUserId = 'member-user'
+      const conversationId = 'conv-1'
+      const sectionId = 'section-1'
+      const calendarEventStatus = 'created' as const
+
+      const section = createTestPlanSection({
+        id: sectionId,
+        userId: 'host-user',
+        conversationId,
+      })
+      const updatedSection = createTestPlanSection({ ...section, calendarEventStatus })
+
+      vi.mocked(mockPlanSectionRepo.findById).mockResolvedValue(section)
+      vi.mocked(mockPlanSectionRepo.update).mockResolvedValue(updatedSection)
+
+      const result = await planService.updatePlanSection(memberUserId, conversationId, sectionId, {
+        calendarEventStatus,
+      })
+
+      expect(result.calendarEventStatus).toBe('created')
+    })
+
+    it('does not allow a conversation member to change section content without owning the section', async () => {
+      const section = createTestPlanSection({
+        userId: 'host-user',
+        conversationId: 'conv-1',
+      })
+      vi.mocked(mockPlanSectionRepo.findById).mockResolvedValue(section)
+
+      await expect(
+        planService.updatePlanSection('member-user', 'conv-1', 'section-1', {
+          content: 'changed',
+        })
+      ).rejects.toThrow(ValidationError)
+    })
+
     it('should throw NotFoundError for non-existent section', async () => {
       vi.mocked(mockPlanSectionRepo.findById).mockResolvedValue(null)
 

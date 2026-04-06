@@ -85,7 +85,14 @@ export default function CalendarSyncModal({
             headers,
             body: JSON.stringify(eventBody),
           })
-          if (!response.ok) {
+
+          const raw: unknown = await response.json().catch(() => null)
+          const googleError =
+            raw && typeof raw === 'object' && 'error' in raw
+              ? (raw as { error?: { message?: string } }).error
+              : undefined
+
+          if (!response.ok || googleError) {
             try {
               await apiService.updatePlanSection(conversationId, sectionId, {
                 calendarEventStatus: 'failed',
@@ -93,8 +100,29 @@ export default function CalendarSyncModal({
             } catch {
               /* best effort */
             }
-            throw new Error('Failed to create one or more calendar events')
+            const msg =
+              googleError?.message ||
+              (!response.ok
+                ? 'Failed to create one or more calendar events'
+                : 'Google Calendar returned an error for this event')
+            throw new Error(msg)
           }
+
+          const eventId =
+            raw && typeof raw === 'object' && 'id' in raw && typeof (raw as { id: unknown }).id === 'string'
+              ? (raw as { id: string }).id
+              : null
+          if (!eventId) {
+            try {
+              await apiService.updatePlanSection(conversationId, sectionId, {
+                calendarEventStatus: 'failed',
+              })
+            } catch {
+              /* best effort */
+            }
+            throw new Error('Google Calendar did not return a created event id')
+          }
+
           try {
             await apiService.updatePlanSection(conversationId, sectionId, {
               calendarEventStatus: 'created',

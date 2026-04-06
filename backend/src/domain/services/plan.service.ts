@@ -174,7 +174,14 @@ export class PlanService {
       throw new NotFoundError('Plan section', sectionId)
     }
 
-    if (section.userId !== userId) {
+    const calendarStatusOnly =
+      updates.calendarEventStatus !== undefined &&
+      updates.content === undefined &&
+      updates.locked === undefined
+
+    // Host-only for content/lock; calendar sync status may be updated by any participant
+    // (getOrCreate already ensures this user may access this conversation).
+    if (!calendarStatusOnly && section.userId !== userId) {
       throw new ValidationError('Plan section does not belong to user')
     }
 
